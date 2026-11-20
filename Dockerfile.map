@@ -1,0 +1,10 @@
+# Offline map generation uses the exact scorer interpreter and dependency lock.
+# Only this separate preparation image installs packages; the submission image
+# uses the committed map and the standard library.
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0
+WORKDIR /app
+COPY requirements.lock /app/requirements.lock
+RUN python -m pip install --no-cache-dir -r /app/requirements.lock coverage==7.13.5
+COPY build_map.py /app/build_map.py
+CMD ["python", "/app/build_map.py", "--help"]

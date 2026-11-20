@@ -1,0 +1,42 @@
+{
+  "environment": "competition-limited Docker",
+  "cpu_measurement": "selector process plus measurement parent",
+  "runs": [
+    {
+      "run": 1,
+      "simulated_seconds": 328.955,
+      "cpu_seconds": 1.32461,
+      "misses": 0,
+      "missed_commits": [],
+      "stdout_bytes": 31466,
+      "stdout_sha256": "e7fabe83be043ad606fd8619f4b99e71c36cf8f8f864c1f47266ea2ec85229ec",
+      "total_seconds": 330.27961,
+      "peak_rss_mib": 156.625
+    },
+    {
+      "run": 2,
+      "simulated_seconds": 328.955,
+      "cpu_seconds": 1.431959,
+      "misses": 0,
+      "missed_commits": [],
+      "stdout_bytes": 31466,
+      "stdout_sha256": "e7fabe83be043ad606fd8619f4b99e71c36cf8f8f864c1f47266ea2ec85229ec",
+      "total_seconds": 330.386959,
+      "peak_rss_mib": 156.65625
+    },
+    {
+      "run": 3,
+      "simulated_seconds": 328.955,
+      "cpu_seconds": 1.421195,
+      "misses": 0,
+      "missed_commits": [],
+      "stdout_bytes": 31466,
+      "stdout_sha256": "e7fabe83be043ad606fd8619f4b99e71c36cf8f8f864c1f47266ea2ec85229ec",
+      "total_seconds": 330.376195,
+      "peak_rss_mib": 156.70703125
+    }
+  ],
+  "median_total_seconds": 330.376195,
+  "deterministic_output": true,
+  "rounded_sample_score_seconds": 330.4
+}

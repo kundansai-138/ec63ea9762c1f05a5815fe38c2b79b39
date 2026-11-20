@@ -1,0 +1,17 @@
+.git
+.gitignore
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.coverage*
+htmlcov
+sample
+tests
+output*.jsonl
+work
+*.log
+*.zip
+*.tar.gz
+.venv
+venv

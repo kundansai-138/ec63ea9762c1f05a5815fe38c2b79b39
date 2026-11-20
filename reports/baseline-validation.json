@@ -1,0 +1,36 @@
+{
+  "baseline_commit": "eb11aec4be8cb2122afe713a4816662c3f0fb2fa",
+  "map_sha256": "8c78910aaaa02ca8e786ff643869f63fc6a1a73d41786ee9894770f671ce1e61",
+  "map_bytes": 2720375,
+  "baseline_tests_passed": 1620,
+  "baseline_tests_skipped": 1,
+  "baseline_subtests_passed": 25440,
+  "regression_tests_passed": 47,
+  "source_files": 364,
+  "map_metadata": {
+    "collection_attribute_policy": "attribute/getattr/hasattr names in statements executed during collection are retained for import-time side-effect fallback",
+    "collection_errors": [],
+    "collection_lines": "lines executed during collection, retained separately because their effects may outlive import and affect any test",
+    "coverage": "7.13.5",
+    "elapsed_seconds": 353.554,
+    "integration_enabled": true,
+    "outcomes": {
+      "passed": 27060,
+      "skipped": 1
+    },
+    "platform": "Linux",
+    "pytest": "9.2.0",
+    "pytest_exit_code": 0,
+    "python": "3.13.18",
+    "scope_dependencies": "class, module, package and session fixture setup propagated to all scope members; module teardown union",
+    "test_subset": null,
+    "untraced_subprocess_tests": [
+      "tests/dialects/test_dialect.py::TestDialect::test_lazy_load"
+    ],
+    "worker_execution": "baseline ProcessPoolExecutor computations executed inline for tracing"
+  },
+  "conservatively_retained_tests": [
+    "tests/dialects/test_dialect.py::TestDialect::test_lazy_load",
+    "tests/dialects/test_sqlite.py::TestSQLite::test_variadic_iif_execution"
+  ]
+}
