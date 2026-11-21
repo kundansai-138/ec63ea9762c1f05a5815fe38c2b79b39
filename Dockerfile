@@ -2,8 +2,21 @@
 # digest is the image we labeled every commit in: its Python and SQLite
 # decide which sqlglot tests run, so keep it if your image runs them.
 FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 \
+    OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
 WORKDIR /app
-COPY selector.py scheduling.py attribute_dependencies.py dependency_safety.py selection_precision.py factory_dependencies.py ast_equal.py baseline_comparisons.py class_dependencies.py tokenizer_dependencies.py coverage-map.json.gz tokenizer-profile.json.gz /app/
+
+# The packages sqlglot's tests import, at the versions in requirements.lock.
+# The selector runs candidate tests on patched sources, so these must match
+# the environment the commits were labeled in.
+RUN python -m pip install --no-cache-dir --no-deps --disable-pip-version-check \
+    duckdb==2.0.0 numpy==2.5.5 pandas==3.1.1 python-dateutil==4.0.0 pytz==2026.6 \
+    tzdata==2026.6 mypy_extensions==1.2.0 setuptools==84.2.1 packaging==26.3
+
+# sqlglot at the pinned commit, checked against the committed baseline map.
+COPY prepare_runtime.py coverage-map.json.gz /app/
+RUN python /app/prepare_runtime.py /opt/sqlglot /app/coverage-map.json.gz
+
+COPY selector.py scheduling.py attribute_dependencies.py dependency_safety.py selection_precision.py factory_dependencies.py ast_equal.py baseline_comparisons.py class_dependencies.py tokenizer_dependencies.py verification_plan.py verify.py runner.py isolation.py tokenizer-profile.json.gz verify-profile.json isolation-map.json.gz /app/
 USER 65534:65534
 CMD ["python", "/app/selector.py"]

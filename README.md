@@ -1,43 +1,50 @@
-# Blast Radius: baseline dependency selector
+# Blast Radius: select from baseline dependencies, then run the candidates
 
-This submission selects sqlglot tests using dependencies measured on the
-unmodified commit `eb11aec4be8cb2122afe713a4816662c3f0fb2fa`, then minimizes the
-worker cost for that selection. It does not execute patched code at decision
-time. Unsupported or uncertain changes fall back to the complete test suite.
+This submission answers each commit in two stages.
 
-The runtime uses only Python's standard library and the committed
-`coverage-map.json.gz` and `tokenizer-profile.json.gz`. It reads `/data/tests.json` and `/data/commits/*.patch`,
-writes one compact JSON answer per commit to stdout, and sends diagnostics to
-stderr. It needs no network, mutable source checkout, or package installation.
+1. **Select.** Dependencies measured on the unmodified commit
+   `eb11aec4be8cb2122afe713a4816662c3f0fb2fa` name the tests a change can
+   reach. Uncertain changes widen the selection, up to the complete suite.
+2. **Run.** When the candidates are cheap, the selector applies the patch to a
+   copy of the pinned sqlglot checkout inside the container and runs those
+   tests. A candidate is dropped only if it ran to completion and passed.
+   Everything else stays selected, then the worker cost is minimized.
 
-## Validated sample result
+Stage 2 is what removes most of the cost: a change that reaches a handful of
+tests but breaks none of them is answered with no workers at all, instead of
+two seconds for a worker that finds nothing.
 
-The candidate retains all 73 known failing-test occurrences across the 30 samples
-with **zero missed commits**. Selector output is deterministic across three-run
-and five-run Docker measurements under the competition limits.
+The image holds the pinned sqlglot checkout and the test dependencies at the
+versions in `requirements.lock`. At run time it reads `/data/tests.json` and
+`/data/commits/*.patch`, writes one compact JSON answer per commit to stdout,
+and sends diagnostics to stderr. It needs no network.
 
-| Version | Simulated seconds | Three-run Docker median | Missed commits |
-| --- | ---: | ---: | ---: |
-| Submitted `d7cc934` | 163.788 | 167.1 | 0 |
-| Tokenizer dependencies | 136.239 | 139.5 | 0 |
+## Sample result
 
-The tokenizer change saves **27.549 simulated seconds (16.82%)**.
-The five-run Docker median is **139.3 seconds**.
-All **217 regression tests pass**, with no skipped regression tests.
-Twelve additional mutation cases have zero observed omissions; four run the
-full suite. Prior validations are also rechecked: all 686 recorded failing-test
-occurrences across 34 earlier cases remain selected.
+Measured locally on the 30 sample commits, in the built image under the
+scorer's limits (2 CPUs, 4 GB, no network, read-only disk, user `nobody`):
 
-These are **local sample measurements**. The last user-provided official result
-for `d7cc934` was 328.4 seconds, including 325.703 simulated seconds and zero
-misses. Its simulated workload differs from the supplied sample batch; the new
-official score requires resubmission and cannot be inferred from this table.
+| Version | Simulated seconds | Missed commits |
+| --- | ---: | ---: |
+| Baseline dependencies only (`d7cc934`) | 163.788 | 0 |
+| With module scope and candidate runs | 119.139 | 0 |
 
-See the [submission audit](reports/SUBMISSION_AUDIT.md),
-[three-run measurements](reports/tokenizer-after-three.json),
-[five-run measurements](reports/tokenizer-after-five.json), and
-[mutation validation](reports/tokenizer-mutation-validation.json).
-Older measurements remain available as historical evidence.
+The best possible answer for these 30 commits costs 94.4 simulated seconds.
+
+CPU seconds are charged on top. On the development machine one run used about
+8.4 CPU seconds, but that machine runs sqlglot's tests about 3.4 times slower
+than the recorded durations in `tests.json`, so this number does not transfer.
+These are **local sample scores, not official leaderboard results**.
+
+Evidence that running candidates agrees with the labeling method: on 146
+synthetic patches, the 1,205 test verdicts produced by `runner.py` were
+compared with real pytest in the locked environment. 1,204 agreed. The one
+disagreement was a test the runner failed and pytest passed, which costs time
+but cannot cause a miss. There was no case of the runner passing a test that
+pytest failed. This is evidence, not proof, for hidden patches.
+
+All 184 regression tests in `tests/` pass. The reports under `reports/`
+describe the earlier baseline-only versions.
 
 ## Selection
 
@@ -118,8 +125,46 @@ then compares the old and new ASTs:
 - Changes to fixtures and other non-Python files select their recorded readers.
   Missing reader evidence falls back to the full suite.
 - Changed signatures, decorators, imports, unsupported top-level expressions,
-  test code, syntax errors, unknown files, unsupported patch operations, and
-  invalid or missing maps fall back to the full suite.
+  test code and syntax errors fall back to the **module scope** of the edited
+  file (next section). Unknown files, unsupported patch operations, and invalid
+  or missing maps fall back to the full suite.
+
+### Module scope
+
+`build_isolation_map.py` runs every baseline test alone, in a fresh process,
+and records the files whose module-level code that process executes. A change
+confined to one existing file cannot affect a test whose own process never
+imports the file, so the importers of the file bound what the change can break.
+sqlglot loads dialect modules lazily, which makes this bound far smaller than
+the suite for dialect, parser, generator and typing modules. Tests that read
+the file as data, and tests without usable evidence, are always added. For a
+file every test imports, the bound is the complete suite, as before.
+
+Running each test alone matters: in a shared process the first test to need a
+module or a cached value pays for it, and later tests reuse it invisibly.
+
+### Running the candidates
+
+`verification_plan.py` decides, per commit, whether running candidates is worth
+its CPU. It compares the simulated cost of scheduling them with the predicted
+CPU of running them, taken from `verify-profile.json` (each baseline test's
+measured in-process cost). Readers of an edited fixture are assumed to fail and
+are not run. The decision never looks at what the patch contains.
+
+`verify.py` forks one worker per commit. The worker builds the patched tree
+under `/tmp` (symbolic links to the pinned checkout, real files only where the
+patch changed something) and `runner.py` runs the tests with `unittest`, in
+collection order, with `SKIP_INTEGRATION=0`. A test counts as failing on a
+failure, an error, a failing subtest, an unexpected success, a failed class or
+module fixture, a CPU-time overrun, or a test file that cannot be imported. A
+worker that dies or hangs is killed and restarted for the remaining tests; a
+test it never judged stays selected. Verification stops 150 seconds after
+start and everything unverified keeps its baseline selection.
+
+The executor and optimizer tests hand work to a spawned process pool. The
+runner executes those jobs in-process with a pickle round trip, as the map
+builder already did, so that the work runs on the patched tree and is charged
+once.
 
 The builder propagates shared fixture setup to all tests in its class, module,
 package, or session. Teardown dependencies are conservatively attributed to the
@@ -192,6 +237,32 @@ includes the selector's process CPU plus a small measurement parent. It reports
 each run, the median total, misses, and output determinism. Without `--image`,
 the report is explicitly a host-Python measurement and excludes interpreter
 teardown from its CPU figure.
+
+## What the image build does
+
+The build installs nine pinned packages from PyPI (the ones sqlglot's tests
+import, at the versions in `requirements.lock`), downloads sqlglot at the
+pinned commit from its own GitHub repository, checks every text file against
+the baseline sources in the committed map, and compiles bytecode. It does not
+run sqlglot's tests. `prepare_runtime.py` stops the build if any source file
+differs from the map, because patches are applied to the map's copy.
+
+## Rebuild the isolation map and the cost profile
+
+Both are built from the pinned commit only, inside the submission image (it
+holds the checkout and the locked test dependencies):
+
+```sh
+docker run --rm --user 0 -v "$PWD:/repo:ro" -v "$PWD/work:/out" blast-radius-entry \
+  bash -c 'cd /repo && python build_isolation_map.py --source /opt/sqlglot \
+    --tests sample/tests.json --output /out/isolation-map.json.gz --jobs 8'
+docker run --rm --user 0 -v "$PWD:/repo:ro" -v "$PWD/work:/out" blast-radius-entry \
+  bash -c 'cd /repo && python build_verify_profile.py --source /opt/sqlglot \
+    --tests sample/tests.json --output /out/verify-profile.json'
+```
+
+Neither file contains a patch, a failure label or the outcome of any proposed
+change. All 1,620 tests pass when run alone, so no test lacks evidence.
 
 ## Rebuild the dependency map
 
