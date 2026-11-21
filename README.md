@@ -30,6 +30,7 @@ scorer's limits (2 CPUs, 4 GB, no network, read-only disk, user `nobody`):
 | Tokenizer dependencies (`b584e95`) | 136.239 | 0 |
 | With module scope and candidate runs | 114.824 | 0 |
 | Narrow class-attribute edits to readers | 106.880 | 0 |
+| Scaled max_nodes check, changed TPC queries run, idle cost profile | 103.680 | 0 |
 
 The best possible answer for these 30 commits costs 94.4 simulated seconds.
 
@@ -200,6 +201,29 @@ Validation: on 800 synthetic patches, the fingerprint matched on every patch
 where the real tests were run afterwards and all of them passed. On the two
 sample commits where `test_execute_tpcds` truly fails, the hashes differed and
 the test stayed selected.
+
+### test_max_nodes and changed TPC queries
+
+`test_max_nodes` (28.8 s) parses 10,000 identical columns, each `x=x=...` 100
+deep, and checks where the parser's per-node counter stops it. Nothing on that
+path depends on the input size except the count, so the fingerprint runs the
+same assertions on 200 columns with the limits scaled to match, hashes every
+outcome and message, and compares its CPU time with the pinned commit's (a
+patch that only slows parsing would time out at full size). It is judged
+together with the TPC tests, since a core edit usually selects both and
+dropping only one saves nothing.
+
+When only a few TPC queries compute something new (per-query hashes), those
+queries are run for real with the test file's own code: pickled through a
+stand-in pool, executed, and compared with DuckDB by `subtestHelper`.
+Unchanged queries repeat the pinned commit's computation.
+
+On 400 synthetic patches these checks dropped 99 heavy tests across 43
+patches; every dropped test passed when run for real on its patched tree.
+Simulated plus CPU fell from 2,821 to 2,582 seconds (-8.5%).
+
+`verify-profile.json` was rebuilt on two otherwise idle cores. The earlier
+profile was taken on a busy machine and overstated test CPU about five times.
 
 ### Running the candidates
 

@@ -667,6 +667,7 @@ def main():
                     sum(planner.estimate(n) for n in run),
                 )
                 job.numbers = run
+                job.value = getattr(planner, "last_value", 0.0)
                 jobs.append(job)
         decisions.append((patch.stem, chosen, job))
 
@@ -720,9 +721,14 @@ def main():
                               - cost_milliseconds([by_number[n] for n in sorted(chosen - hit)])) / 1000.0
                     if saving < FINGERPRINT_MIN_SAVING:
                         continue
+                    # Each executed query that differs costs about 0.6 CPU s
+                    # to run for real, after about 10 s of fingerprinting and
+                    # loading data; stay well inside the saving.
+                    budget = int(max(0.0, saving - 10.0) / 0.6)
                     wanted.append((commit, {edit.path: edit.source.encode("utf-8")
                                             for edit in info["edits"]},
-                                   {by_number[n]["id"] for n in hit}))
+                                   {by_number[n]["id"] for n in hit},
+                                   {by_number[n]["id"]: min(budget, 4) for n in hit}))
             if wanted:
                 # The children import these through the test module; loading
                 # them once here is shared by every fork.
@@ -741,7 +747,8 @@ def main():
                         continue
                     same = {ids[name] for name, value in hashes.items()
                             if name in ids and isinstance(value, str)
-                            and not value.startswith("error") and value == baseline.get(name)}
+                            and (value == "pass" or (not value.startswith("error")
+                                                     and value == baseline.get(name)))}
                     fingerprinted[commit] = len(chosen & same)
                     chosen.difference_update(same)
         except Exception as error:  # noqa: BLE001 - keep the selections

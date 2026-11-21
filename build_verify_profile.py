@@ -76,17 +76,16 @@ def measure(source: str, tests: list[dict], work: str) -> dict:
 
 
 def build(raw: dict, tests: list[dict]) -> dict:
+    """CPU seconds as measured. Build on an idle machine of about the grader's
+    speed: busy-machine timings come out several times too high."""
     recorded = {test["id"]: test["seconds"] for test in tests}
-    # Speed of this machine against the recorded durations, from ordinary
-    # single-process tests long enough to time reliably.
     ratios = [raw["cpu"][name] / seconds for name, seconds in recorded.items()
               if name in raw["cpu"] and 0.02 <= seconds <= 1.0 and name not in raw["failed"]]
-    ratio = statistics.median(ratios)
     return {
         "version": 1,
         "commit": PINNED_COMMIT,
-        "machine_ratio": round(ratio, 4),
-        "cpu": {name: round(seconds / ratio, 4) for name, seconds in sorted(raw["cpu"].items())},
+        "machine_ratio": round(statistics.median(ratios), 4),
+        "cpu": {name: round(seconds, 4) for name, seconds in sorted(raw["cpu"].items())},
         "unverifiable": sorted(raw["failed"]),
     }
 

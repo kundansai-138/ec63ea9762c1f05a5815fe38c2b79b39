@@ -39,6 +39,7 @@ TESTS = {
     "tpcds": "tests/test_executor.py::TestExecutor::test_execute_tpcds",
     "tpch": "tests/test_executor.py::TestExecutor::test_execute_tpch",
     "optimized_tpch": "tests/test_executor.py::TestExecutor::test_optimized_tpch",
+    "max_nodes": "tests/test_parser.py::TestParser::test_max_nodes",
 }
 
 # A patch touching any of these is never judged by fingerprint.
@@ -53,9 +54,12 @@ def eligible(paths) -> bool:
     return bool(paths) and not any(path.startswith(PROTECTED_PREFIXES) for path in paths)
 
 
-def _fingerprints(tree: str, expected: dict | None = None, only=None) -> dict:
+def _fingerprints(tree: str, expected: dict | None = None, only=None, budgets=None) -> dict:
     """expected: the pinned commit's per-query parts, to stop early on a difference.
-    only: the test ids to fingerprint (all when None)."""
+    only: the test ids to fingerprint (all when None).
+    budgets: per test id, how many executed queries may differ; those are then
+    run for real and the test reported as "pass" when they all pass."""
+    budgets = budgets or {}
     os.chdir(tree)
     sys.path.insert(0, tree)
     os.environ["SKIP_INTEGRATION"] = "0"
@@ -137,13 +141,27 @@ def _fingerprints(tree: str, expected: dict | None = None, only=None) -> dict:
     class _Differs(Exception):
         pass
 
-    def checked(parts: list, key: str) -> None:
-        # Stop at the first part that differs from the pinned commit's.
+    differing: dict[str, list[int]] = {}
+
+    def checked(parts: list, key: str, executes: bool | None = None) -> None:
+        # Compare each part with the pinned commit's as soon as it exists.
+        # A query whose result is executed may differ, up to the budget: those
+        # queries are then run for real. Anything else stops the comparison.
         if expected is None:
             return
         known = expected.get(TESTS[key])
         index = len(parts) - 1
-        if not isinstance(known, list) or index >= len(known) or known[index] != parts[index]:
+        if isinstance(known, list) and index < len(known) and known[index] == parts[index]:
+            return
+        if not isinstance(known, list) or index >= len(known) or index == 0 or executes is None:
+            raise _Differs()
+        if not executes:
+            # Parsed, pickled and sent to a worker that returns None for it:
+            # a different but valid parse cannot change the outcome.
+            return
+        found = differing.setdefault(key, [])
+        found.append(index - 1)
+        if len(found) > budgets.get(TESTS[key], 0):
             raise _Differs()
 
     def execute_digest(key: str, fixture: str, schema: dict) -> list:
@@ -167,7 +185,7 @@ def _fingerprints(tree: str, expected: dict | None = None, only=None) -> dict:
                 for line in describe_plan(plan, executor, set()):
                     digest.update(line.encode())
             parts.append(digest.hexdigest())
-            checked(parts, key)
+            checked(parts, key, bool(meta.get("execute")))
         return parts
 
     def optimized_digest(key: str, fixture: str) -> list:
@@ -180,10 +198,94 @@ def _fingerprints(tree: str, expected: dict | None = None, only=None) -> dict:
             checked(parts, key)
         return parts
 
+    def run_queries(key: str, indices: list[int]) -> None:
+        """Run fixture queries exactly as TestExecutor._mp_execute does.
+
+        The pool hands each query, pickled, to a worker that executes it with
+        the pickled schema and tables, and the result comes back pickled. The
+        test's own subtestHelper compares it with DuckDB.
+        """
+        import tests.test_executor as module
+
+        case = module.TestExecutor("test_execute_" + key)
+        module.TestExecutor.setUpClass()
+        try:
+            tpch = key == "tpch"
+            schema = TPCH_SCHEMA if tpch else TPCDS_SCHEMA
+            tables = case.tpch_tables if tpch else case.tpcds_tables
+            sqls = case.tpch_sqls if tpch else case.tpcds_sqls
+            module.initializer(*pickle.loads(pickle.dumps((schema, tables))))
+            for index in indices:
+                meta, sql, _ = sqls[index]
+                expression, meta = pickle.loads(pickle.dumps((parse_one(sql), meta)))
+                table = pickle.loads(pickle.dumps(module.mp_execute(expression, meta)))
+                if table is None:
+                    continue
+                case.subtestHelper(index, table, tpch=tpch)
+        finally:
+            module.TestExecutor.tearDownClass()
+
+    def max_nodes_digest() -> tuple[str, float]:
+        """test_max_nodes at 1/50 of its width, with the node limits scaled to match.
+
+        The test parses 10,000 identical columns, each `x=x=...` 100 deep, and
+        checks where the parser's per-node counter stops it. Nothing in that
+        path depends on the input's size except the count itself, so the same
+        assertions on 200 columns exercise the same code. Every outcome and
+        message is hashed; the CPU time catches a patch that only makes parsing
+        slower, which at full size would end in a timeout.
+        """
+        import time
+
+        import tests.test_parser  # noqa: F401 - the test file must import
+        from sqlglot import exp as expressions
+        from sqlglot.errors import ParseError
+
+        digest = hashlib.sha256()
+
+        def outcome(call):
+            try:
+                value = call()
+            except ParseError as error:
+                return "ParseError:" + str(error)
+            return "ok:" + type(value).__name__ + ":" + repr(value)
+
+        started = time.process_time()
+        digest.update(outcome(lambda: parse_one("SELECT 1", max_nodes=1_000_000)).encode())
+        columns = ",".join(f"col{i}" for i in range(500))
+        digest.update(outcome(lambda: parse_one(f"SELECT {columns} FROM t", max_nodes=1_000_000)).encode())
+        width, depth = 200, 100
+        wide = "SELECT " + ",".join("x" + "=x" * depth for _ in range(width))
+        for limit in (20_000, 1_000):
+            text = outcome(lambda: parse_one(wide, max_nodes=limit))
+            if not (text.startswith("ParseError:") and f"({limit})" in text
+                    and "Maximum number of AST nodes" in text):
+                raise AssertionError("max_nodes limit not enforced")
+            digest.update(text.encode())
+        many = "SELECT " + ",".join(f"x={i}" for i in range(100))
+        digest.update(outcome(lambda: parse_one(many, max_nodes=5)).encode())
+        last = parse_one("SELECT 1, 2, 3")
+        if not isinstance(last, expressions.Select):
+            raise AssertionError("parse after a limit failed")
+        digest.update(repr(last).encode())
+        return digest.hexdigest(), time.process_time() - started
+
     result: dict = {"_parts": {}}
     work = (("tpcds", lambda: execute_digest("tpcds", "optimizer/tpc-ds/tpc-ds.sql", TPCDS_SCHEMA)),
             ("tpch", lambda: execute_digest("tpch", "optimizer/tpc-h/tpc-h.sql", TPCH_SCHEMA)),
             ("optimized_tpch", lambda: optimized_digest("optimized_tpch", "optimizer/tpc-h/tpc-h.sql")))
+    if only is None or TESTS["max_nodes"] in only:
+        name = TESTS["max_nodes"]
+        try:
+            value, seconds = max_nodes_digest()
+            reference = (expected or {}).get(name)
+            if isinstance(reference, list) and len(reference) == 2 and seconds > 3 * reference[1] + 0.3:
+                result[name] = "error:slow"
+            else:
+                result[name] = value
+                result["_parts"][name] = [value, round(seconds, 4)]
+        except BaseException as error:  # noqa: BLE001 - differs from the baseline hash
+            result[name] = "error:" + type(error).__name__
     for key, compute in work:
         if only is not None and TESTS[key] not in only:
             continue
@@ -197,6 +299,15 @@ def _fingerprints(tree: str, expected: dict | None = None, only=None) -> dict:
             continue
         if expected is not None and len(parts) != len(expected.get(TESTS[key]) or ()):
             result[TESTS[key]] = "error:differs"
+            continue
+        if differing.get(key):
+            # Only these queries compute something new: run them as the test does.
+            try:
+                run_queries(key, differing[key])
+            except BaseException as error:  # noqa: BLE001 - the test would fail
+                result[TESTS[key]] = "error:failed:" + type(error).__name__
+                continue
+            result[TESTS[key]] = "pass"
             continue
         result[TESTS[key]] = hashlib.sha256("".join(parts).encode()).hexdigest()
         result["_parts"][TESTS[key]] = parts
@@ -254,7 +365,7 @@ def run_jobs(source: str, jobs: list, work_root: str,
         while pending or active:
             while (pending and len(active) < concurrency
                    and (deadline is None or time.monotonic() < deadline)):
-                key, replacements, only = pending.pop(0)
+                key, replacements, only, budgets = pending.pop(0)
                 serial += 1
                 tree = os.path.join(work_root, "fp%d" % serial)
                 output = tree + ".json"
@@ -268,7 +379,7 @@ def run_jobs(source: str, jobs: list, work_root: str,
                         os.dup2(sink, 1)
                         os.dup2(sink, 2)
                         runner.build_tree(source, tree, replacements)
-                        hashes = _fingerprints(tree, expected, only)
+                        hashes = _fingerprints(tree, expected, only, budgets)
                         hashes.pop("_parts", None)
                         with open(output + ".tmp", "w", encoding="utf-8") as handle:
                             json.dump(hashes, handle, sort_keys=True)

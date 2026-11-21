@@ -21,7 +21,7 @@ COPY tpc_fingerprint.py runner.py /app/
 # Fingerprint of what the TPC executor tests compute on the pinned commit.
 # Its own check that the result has no "error" values keeps a broken build visible.
 RUN cd /tmp && python /app/tpc_fingerprint.py /opt/sqlglot /app/tpc-fingerprint.json \
-    && python -c "import json,sys; d=json.load(open('/app/tpc-fingerprint.json')); sys.exit(len(d['_parts']) != 3 or any(isinstance(v, str) and v.startswith('error') for v in d.values()))" \
+    && python -c "import json,sys; d=json.load(open('/app/tpc-fingerprint.json')); sys.exit(len(d['_parts']) != 4 or any(isinstance(v, str) and v.startswith('error') for v in d.values()))" \
     && chmod 644 /app/tpc-fingerprint.json \
     && find /opt/sqlglot -name __pycache__ -newer /app/tpc_fingerprint.py -prune -exec chmod -R a+rX {} +
 
