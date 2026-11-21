@@ -1,11 +1,11 @@
 {
   "baseline_commit": "eb11aec4be8cb2122afe713a4816662c3f0fb2fa",
-  "map_sha256": "8c78910aaaa02ca8e786ff643869f63fc6a1a73d41786ee9894770f671ce1e61",
-  "map_bytes": 2720375,
+  "map_sha256": "471394eb82d276e4e8acd04d86a9b8bc3efe81747624fe8b42094bb1870aca5c",
+  "map_bytes": 3157681,
   "baseline_tests_passed": 1620,
   "baseline_tests_skipped": 1,
   "baseline_subtests_passed": 25440,
-  "regression_tests_passed": 47,
+  "regression_tests_passed": 97,
   "source_files": 364,
   "map_metadata": {
     "collection_attribute_policy": "attribute/getattr/hasattr names in statements executed during collection are retained for import-time side-effect fallback",
@@ -23,6 +23,7 @@
     "pytest_exit_code": 0,
     "python": "3.13.18",
     "scope_dependencies": "class, module, package and session fixture setup propagated to all scope members; module teardown union",
+    "static_dependency_analysis": "Version 1: persistent-state producer/callee ranges and attribute-read dependencies derived only from pinned source and baseline coverage",
     "test_subset": null,
     "untraced_subprocess_tests": [
       "tests/dialects/test_dialect.py::TestDialect::test_lazy_load"
@@ -32,5 +33,7 @@
   "conservatively_retained_tests": [
     "tests/dialects/test_dialect.py::TestDialect::test_lazy_load",
     "tests/dialects/test_sqlite.py::TestSQLite::test_variadic_iif_execution"
-  ]
+  ],
+  "dynamic_coverage_unchanged_from_original_validated_map": true,
+  "static_dependency_analysis_version": 1
 }

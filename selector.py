@@ -15,6 +15,9 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from scheduling import schedule
+from attribute_dependencies import build_attribute_readers
+from dependency_safety import unsafe_functions
+from selection_precision import function_lines, lambda_intervals
 
 PINNED_COMMIT = "eb11aec4be8cb2122afe713a4816662c3f0fb2fa"
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
@@ -157,6 +160,8 @@ class SelectionEngine:
         known = set(mapping.get("tests", []))
         self.uncertain = {t["number"] for t in tests if t["id"] not in known or t["id"] in mapping.get("incomplete", [])}
         self.trees = {}
+        self.attribute_readers = mapping.get("attribute_readers")
+        self.unsafe = {}
 
     def _numbers(self, indices) -> set[int]:
         return {self.by_index[i] for i in indices if i in self.by_index}
@@ -181,6 +186,29 @@ class SelectionEngine:
             return selected
         if edit.path.startswith("tests/"):
             return self.all_tests
+        if edit.path not in self.unsafe:
+            if self.mapping.get("dependency_analysis_version") == 1 and "persistent_functions" in file:
+                self.unsafe[edit.path] = {tuple(bounds) for bounds in file["persistent_functions"]}
+            else:
+                self.unsafe[edit.path] = unsafe_functions(file["source"])
+        # Patches can introduce shared-state effects even when the baseline was
+        # pure; callers of the changed function are then not the only consumers.
+        new_unsafe = unsafe_functions(edit.source)
+
+        def ordinary_decorators(function):
+            names = {d.id for d in function.decorator_list if isinstance(d, ast.Name)}
+            if len(names) != len(function.decorator_list) or not names <= {"property", "staticmethod", "classmethod"}:
+                return False
+            # These builtin descriptors do not inspect/execute the wrapped body.
+            # An alias or rebinding would invalidate that assumption.
+            for node in ast.walk(old):
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in names:
+                    return False
+                if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names:
+                    return False
+                if isinstance(node, (ast.Import, ast.ImportFrom)) and any((a.asname or a.name.split('.')[0]) in names for a in node.names):
+                    return False
+            return True
         def header(node):
             import copy
             node = copy.copy(node)
@@ -197,6 +225,12 @@ class SelectionEngine:
                     return False
                 if isinstance(left, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     if header(left) != header(right):
+                        return False
+                    if not ordinary_decorators(left):
+                        return False
+                    if any(start <= left.end_lineno and end >= left.lineno for start, end in self.unsafe[edit.path]):
+                        return False
+                    if any(start <= right.end_lineno and end >= right.lineno for start, end in new_unsafe):
                         return False
                     def is_generator(function):
                         pending = list(function.body)
@@ -217,18 +251,33 @@ class SelectionEngine:
                     if any(left.body[0].lineno <= n <= left.end_lineno
                            for n in file.get("collection_lines", [])):
                         return False
-                    selected.update(self._lines(file, left.body[0].lineno, left.end_lineno))
+                    intervals = function_lines(left, right)
+                    if intervals is None:
+                        intervals = [(left.body[0].lineno, left.end_lineno)]
+                    for start, end in intervals:
+                        selected.update(self._lines(file, start, end))
                 elif isinstance(left, ast.ClassDef):
                     if header(left) != header(right):
                         return False
                     if not compare_body(left.body, right.body, prefix + left.name + "."):
                         return False
-                elif prefix and isinstance(left, (ast.Assign, ast.AnnAssign)):
+                elif isinstance(left, (ast.Assign, ast.AnnAssign)):
+                    intervals = lambda_intervals(left, right, file["source"], file.get("collection_lines", []))
+                    if intervals:
+                        for start, end in intervals:
+                            selected.update(self._lines(file, start, end))
+                        continue
+                    if not prefix:
+                        return False
                     if left.value is None or right.value is None:
                         return False
                     left_target = left.targets if isinstance(left, ast.Assign) else [left.target]
                     right_target = right.targets if isinstance(right, ast.Assign) else [right.target]
                     if not all(isinstance(n, ast.Name) for n in left_target + right_target):
+                        return False
+                    # type.__new__ reads these in C, outside Python coverage.
+                    # Same-shaped __slots__ edits can make the module unimportable.
+                    if any(n.id.startswith("__") and n.id.endswith("__") for n in left_target):
                         return False
                     if isinstance(left, ast.AnnAssign) and ast.dump(left.annotation) != ast.dump(right.annotation):
                         return False
@@ -240,6 +289,10 @@ class SelectionEngine:
                     if any(n.id in self.mapping.get("collection_attributes", []) for n in left_target):
                         return False
                     selected.update(self._class_selection(edit.path, prefix.rstrip("."), file))
+                    if self.attribute_readers is None:
+                        self.attribute_readers = build_attribute_readers(self.files)
+                    for target in left_target:
+                        selected.update(self._numbers(self.attribute_readers.get(target.id, [])))
                 else:
                     # Top-level execution and class construction can break
                     # imports. Unsupported semantic changes use the full suite.
@@ -263,7 +316,7 @@ class SelectionEngine:
                     readers = self._numbers(self.files[edit.path].get("reads", []))
                     selected.update(readers or self.all_tests)
             return selected
-        except (UncertainPatch, SyntaxError, ValueError, TypeError, KeyError, AttributeError, IndexError, RecursionError):
+        except (UncertainPatch, SyntaxError, ValueError, TypeError, KeyError, AttributeError, IndexError, RuntimeError, RecursionError):
             return set(self.all_tests)
 
 

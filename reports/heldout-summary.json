@@ -1,0 +1,16 @@
+{
+  "method": "Deterministic independent baseline mutations; all selections frozen before execution; no sample answers read; changed lines exclude sample changes",
+  "scope": "Only the fixed 18-test subset is executed per mutation; this does not prove complete hidden-set safety",
+  "baseline_exit_code": 0,
+  "mutations": 15,
+  "mutations_with_failures": 13,
+  "missed_mutations": 0,
+  "failure_observations": 53,
+  "final_candidate_rechecked": true,
+  "recheck_scope": "Every observed failing test belongs to final selection; initial full selected sets were not retained, so counts alone are not claimed as a set-superset proof",
+  "final_map_sha256": "471394eb82d276e4e8acd04d86a9b8bc3efe81747624fe8b42094bb1870aca5c",
+  "fixed_test_subset_size": 18,
+  "mutant_test_executions": 270,
+  "observed_failures_omitted": 0,
+  "raw_failure_lists_in_runtime": false
+}

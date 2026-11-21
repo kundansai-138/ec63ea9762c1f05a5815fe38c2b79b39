@@ -1,0 +1,51 @@
+{
+  "uid": 65534,
+  "gid": 65534,
+  "home": "/tmp",
+  "root_read_only": true,
+  "tmp_bytes": 67108864,
+  "tmp_empty": true,
+  "network_interfaces": [
+    "lo"
+  ],
+  "cpu_max": "200000 100000",
+  "memory_max": 4294967296,
+  "pids_max": 256,
+  "answers_available": false,
+  "app_files": [
+    "attribute_dependencies.py",
+    "coverage-map.json.gz",
+    "dependency_safety.py",
+    "scheduling.py",
+    "selection_precision.py",
+    "selector.py"
+  ],
+  "builder_limits": {
+    "Memory": 8589934592,
+    "CpuQuota": 400000,
+    "CpuPeriod": 100000
+  },
+  "build": {
+    "exit_code": 0,
+    "wall_seconds": 4.1790935000171885,
+    "no_cache": true,
+    "builder": "blast-radius-audit-20261121",
+    "limits": {
+      "cpus": 4,
+      "memory_bytes": 8589934592,
+      "timeout_seconds": 600
+    },
+    "cold_builder_initial_wall_seconds": 32.55885010003112
+  },
+  "image": {
+    "Id": "sha256:b2de514296aa672065f07864d92971ffa03b1e841d0370953f4063ba5b245ec1",
+    "Architecture": "amd64",
+    "Os": "linux"
+  },
+  "repository": {
+    "tracked_bytes_before_final_report_update": 3624479,
+    "all_git_object_uncompressed_bytes_before_final_report_update": 6402092,
+    "gitlinks": 0,
+    "git_lfs_used": false
+  }
+}

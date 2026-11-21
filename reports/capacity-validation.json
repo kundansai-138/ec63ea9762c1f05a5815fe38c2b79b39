@@ -1,0 +1,10 @@
+{
+  "purpose": "Capacity check only:45 renamed copies of 30 sample patches; not unseen final data",
+  "commits": 45,
+  "wall_seconds": 3.4369999999180436,
+  "cpu_seconds": 2.746055,
+  "peak_rss_mib": 200.34375,
+  "stdout_bytes": 33701,
+  "format_valid": true,
+  "misses_against_repeated_sample_labels": 0
+}

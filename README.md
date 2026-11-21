@@ -12,31 +12,47 @@ stderr. It needs no network, mutable source checkout, or package installation.
 
 ## Validated sample result
 
-Three fresh Linux/amd64 Docker runs under the competition limits produced
-identical output and **zero missed commits** across all 30 samples.
+All three-run and five-run Docker evaluations selected every known failing test
+across the 30 samples, with identical output and **zero missed commits**.
 
 | Measure | Result |
 | --- | ---: |
-| Simulated CI seconds | 328.955 |
-| Median total, including measured CPU | 330.4 s |
+| Sum of busiest-worker loads | 202.689 s |
+| Worker overhead: 43 workers at 2 s | 86.000 s |
+| Miss penalty: 0 commits at 300 s | 0.000 s |
+| Simulated total | 288.689 s |
+| Three-run median including measured CPU | 290.6 s |
+| Five-run median including measured CPU | 290.5 s |
+| Previous submission three-run score | 330.4 s |
 | Starter baseline | 1,614.1 s |
-| Reduction from starter | 79.5% |
-| Peak selector RSS | 156.8 MiB or less |
-| Output per batch | 31,466 bytes |
-| Regression tests | 47 passed |
+| Peak selector RSS, sample runs | under 196 MiB |
+| Output per sample batch | 24,000 bytes |
+| Regression tests in pinned Docker | 97 passed |
 
-The committed map was generated in the pinned Docker image with the exact
-package lock: 1,620 baseline tests and 25,440 subtests passed, with the expected
-single SQLite skip. A test that spawns an untraced interpreter is conservatively
-retained on every change. Sample CPU measurements include a tiny measurement
-parent; these are local results, not an official hidden-set score.
+The improvement is about 12% over the previous submission and 82% over the
+starter. An independent integer-arithmetic scorer agrees with the untouched
+supplied scorer. It explicitly checks the one-300-second-penalty-per-missed-commit
+rule and rounds the median in integer microseconds.
 
-See [sample validation](reports/sample-validation.json) and
-[baseline provenance](reports/baseline-validation.json) for the recorded evidence.
+The baseline map was generated in the pinned image with the exact package lock:
+1,620 tests and 25,440 subtests passed, with the expected SQLite skip. Its source
+and dynamic coverage are unchanged; added static indexes come only from that
+baseline. An independent validation used 15 mutations outside sample-edited
+lines and a fixed 18-test subset per mutation. All 53 observed failures were
+selected. This subset validation does not prove safety on every hidden change.
+
+Measured CPU includes a small measurement parent. These are local sample scores,
+not official hidden-set scores. See the [submission audit](reports/SUBMISSION_AUDIT.md),
+[three-run results](reports/sample-validation.json),
+[five-run results](reports/sample-validation-five-runs.json),
+[baseline provenance](reports/baseline-validation.json), and
+[independent mutation summary](reports/heldout-summary.json).
 
 ## Selection
 
-`build_map.py` runs the pinned baseline tests to record dependencies. The map
+`build_map.py` runs the pinned baseline tests to record dependencies and builds
+static indexes through `enrich_map.py`. The latter can also refresh indexes from
+an existing baseline map without executing any proposed changes. The map
 contains baseline source text, per-test line coverage, files read during tests,
 and class construction dependencies. Map identities are pytest node IDs, never
 the sample manifest's numeric test IDs. At runtime the selector joins node IDs
@@ -47,14 +63,25 @@ The selector applies each unified diff in memory and verifies its original
 context. For supported Python edits it parses and compiles the resulting source,
 then compares the old and new ASTs:
 
-- An edit confined to an existing function body selects every baseline test
-  that executed any line in that function. Using the entire function covers
-  inserted branches and multiline expressions better than intersecting only
-  deleted lines with coverage.
+- Existing function-body changes use whole-statement coverage when structure
+  and lexical bindings remain unchanged. Changed conditions retain their full
+  compound statement. Insertions, deletions, comprehension changes, and scope
+  changes retain whole-function coverage.
+- Direct multiline lambdas in dispatch dictionaries can use body coverage only
+  when bytecode establishes a mandatory interior line that did not execute
+  during collection. Dictionary keys, defaults, signatures, and surrounding
+  expressions must stay identical; ambiguous cases retain the full suite.
+- Existing or newly introduced persistent state, cached result producers,
+  unrecognized decorators, and import-time function execution fall back to the
+  full suite. Static analysis includes global/class state, aliases, mutable
+  defaults, recursive helper calls, and transitive same-module callees.
 - Literal assignments inside supported classes select tests that constructed
   the class or its subclasses. Constructor instrumentation records each class's
   MRO for sqlglot expressions, parsers, tokenizers, generators, and dialects.
-  Missing class evidence falls back to module consumers, or the full suite.
+  Tests reading the same attribute without constructing the class are also
+  included. Missing class evidence falls back to module consumers, or the full
+  suite. Dunder assignments such as `__slots__` always retain the full suite,
+  because built-in class construction can fail outside Python tracing.
   Attribute names used by baseline statements executed during test collection
   are retained separately. Changing a class attribute with one of these names
   falls back to the full suite because its effects may have occurred at import
@@ -100,6 +127,7 @@ From the repository root, these commands also work in PowerShell without make:
 ```sh
 docker build --platform linux/amd64 -t blast-radius-entry .
 python benchmark.py --image blast-radius-entry --runs 3 --report work/docker-benchmark.json
+python benchmark.py --image blast-radius-entry --runs 5 --report work/docker-benchmark-five.json
 ```
 
 In a shell with Docker, make, and Python available:
@@ -211,10 +239,11 @@ python -m pip install -r requirements.lock coverage==7.13.5
 python build_map.py --source /tmp/sqlglot-baseline --output work/candidate-map.json.gz
 ```
 
-Commit the map as an ordinary file. No Git LFS, submodule, answer file, patch
-fingerprint, or precomputed mapping from edit kinds to failures is needed.
-The builder never reads the sample patches or answers; the sample answers are
-used only by the local scorer. The Docker build context excludes those samples.
+Commit the map as an ordinary file. No Git LFS or submodule is needed. The
+submission image contains no sample answers, patch fingerprints, or mappings
+from edit categories to failures. The builder never reads the sample patches
+or answers; the sample answers are used only by the local scorer. The Docker
+build context excludes those samples.
 
 ## Submit
 

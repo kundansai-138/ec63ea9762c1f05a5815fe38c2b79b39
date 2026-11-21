@@ -28,6 +28,9 @@ import time
 import coverage
 import pytest
 
+from attribute_dependencies import build_attribute_readers
+from enrich_map import enrich
+
 PINNED_COMMIT = "eb11aec4be8cb2122afe713a4816662c3f0fb2fa"
 
 
@@ -344,6 +347,7 @@ class DependencyRecorder:
             "files": files,
             "classes": classes,
             "collection_attributes": collection_attributes(files),
+            "attribute_readers": build_attribute_readers(files),
             "incomplete": sorted(self.incomplete),
             "metadata": {
                 "python": platform.python_version(),
@@ -411,6 +415,7 @@ def main():
     # No xdist: dynamic contexts must share one process. Worker jobs are inlined.
     exit_code = recorder.record(["-q", "--tb=short", "-p", "no:cacheprovider", *(options.test or ["tests"])])
     artifact = recorder.artifact(exit_code, time.monotonic() - started)
+    enrich(artifact)
     artifact["metadata"]["test_subset"] = options.test
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("wb") as destination:

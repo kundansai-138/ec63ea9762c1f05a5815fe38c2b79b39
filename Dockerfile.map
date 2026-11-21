@@ -6,5 +6,5 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0
 WORKDIR /app
 COPY requirements.lock /app/requirements.lock
 RUN python -m pip install --no-cache-dir -r /app/requirements.lock coverage==7.13.5
-COPY build_map.py /app/build_map.py
+COPY build_map.py attribute_dependencies.py dependency_safety.py enrich_map.py /app/
 CMD ["python", "/app/build_map.py", "--help"]
