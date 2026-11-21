@@ -1,0 +1,296 @@
+{
+  "base_commit": "205e093b3feb38913cb4313a252aa456d25513b2",
+  "scope": "Integrated selections rechecked against recorded actual mutant failures; no new full mutant-suite executions in this integration pass.",
+  "mutation_cases": 34,
+  "observed_failing_test_occurrences": 686,
+  "omitted_failing_tests": 0,
+  "preserved_all_existing_map_entries": true,
+  "runtime_image_matches_worktree": true,
+  "runtime_file_sha256": {
+    "selection_precision.py": "a6d36fdde7c8e037c915db05057e0a6411a34c3e136a9ebd58f212a4b06fc954",
+    "attribute_dependencies.py": "285496d1c8db085560c7c621c028a3e0a699818c7965a8410a2c442189bbabc9",
+    "ast_equal.py": "54bf601507b049d0011ba2578271430fce4746dbf3bc6d139c835b8a1e8552e9",
+    "class_dependencies.py": "210e7a532959c633ac7f57fe4fb463a6bc619af7d9d90bd806bc30bf69d00268",
+    "coverage-map.json.gz": "28c88364f9eb689ed4e518956f5a7e117ac7c2c13907124873f69de86e365d6f",
+    "baseline_comparisons.py": "da889c8e6b09f41d27e4ee38572c8efb3d25d0b626d371cf40b396f19cda42f9",
+    "dependency_safety.py": "9dcc1b875720cbc34257fa22bc8b526f2e4abc11f96d49b601d8061e6d4e7207",
+    "factory_dependencies.py": "5593abd97cf16969b03735034277ea8658555bd64611bfeb3b9eb1b5753ce5fa",
+    "scheduling.py": "d3db4c46d30fb50308fc9e1bb626fc22c02a491a219979726f1660c3091bb45e",
+    "selector.py": "ab25251b866746b5b43319a95808264a48791a40caeb934f6329cf4b761960d4"
+  },
+  "class_profile_metadata": {
+    "background_thread": false,
+    "candidate_attributes": 706,
+    "collection_errors": [],
+    "complete": true,
+    "elapsed_seconds": 182.627,
+    "instrumentation": "class-qualified Python attribute and builtin reflection reads; recognized derived schema sets",
+    "opaque_reflection_contexts": [],
+    "outcomes": {
+      "passed": 27060,
+      "skipped": 1
+    },
+    "pytest": "9.2.0",
+    "pytest_exit_code": 0,
+    "python": "3.13.18",
+    "scope_dependencies": "shared fixture setup and module teardown propagated",
+    "worker_execution": "baseline process pools inlined with ForkingPickler transport"
+  },
+  "regression_tests": 184,
+  "regression_passed": true,
+  "rows": [
+    {
+      "group": "factory",
+      "name": "role_target",
+      "selected": 71,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "factory",
+      "name": "full_columns",
+      "selected": 252,
+      "observed_failures": 1,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "equivalence_1",
+      "selected": 6,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "equivalence_2",
+      "selected": 3,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "equivalence_3",
+      "selected": 3,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "equivalence_4",
+      "selected": 4,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "equivalence_5",
+      "selected": 4,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "behavior_change_1",
+      "selected": 45,
+      "observed_failures": 1,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "behavior_change_2",
+      "selected": 32,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "behavior_change_3",
+      "selected": 5,
+      "observed_failures": 1,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "behavior_change_4",
+      "selected": 8,
+      "observed_failures": 1,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "behavior_change_5",
+      "selected": 25,
+      "observed_failures": 1,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "class_schema",
+      "name": "optional_table",
+      "selected": 7,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "class_schema",
+      "name": "require_referenced_table",
+      "selected": 7,
+      "observed_failures": 3,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "class_schema",
+      "name": "reverse_all_flags",
+      "selected": 7,
+      "observed_failures": 3,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "heldout",
+      "name": "persistent_dispatch",
+      "selected": 1620,
+      "observed_failures": 7,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "numeric_conversion",
+      "selected": 13,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "range_merge",
+      "selected": 6,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "topological_sort",
+      "selected": 94,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "name_factory",
+      "selected": 1386,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "serialization_dump",
+      "selected": 40,
+      "observed_failures": 3,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "serialization_load",
+      "selected": 40,
+      "observed_failures": 3,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "token_representation",
+      "selected": 27,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "numeric_parser",
+      "selected": 1620,
+      "observed_failures": 0,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "expression_name",
+      "selected": 1620,
+      "observed_failures": 8,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "normalize_identifier_result",
+      "selected": 315,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "numeric_default_limit",
+      "selected": 1620,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "generator_result",
+      "selected": 1620,
+      "observed_failures": 7,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "slots_import_conflict",
+      "selected": 1620,
+      "observed_failures": 18,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "pure_comment_control",
+      "selected": 1,
+      "observed_failures": 0,
+      "omitted": 0
+    },
+    {
+      "group": "precision",
+      "name": "compound_insert",
+      "selected": 315,
+      "observed_failures": 309,
+      "omitted": 0
+    },
+    {
+      "group": "precision",
+      "name": "compound_kind",
+      "selected": 1620,
+      "observed_failures": 2,
+      "omitted": 0
+    },
+    {
+      "group": "precision",
+      "name": "compound_new_else",
+      "selected": 315,
+      "observed_failures": 310,
+      "omitted": 0
+    },
+    {
+      "group": "precision",
+      "name": "single_line_dispatch",
+      "selected": 5,
+      "observed_failures": 1,
+      "omitted": 0
+    }
+  ]
+}

@@ -12,41 +12,35 @@ stderr. It needs no network, mutable source checkout, or package installation.
 
 ## Validated sample result
 
-All eight Docker runs selected every known failing test across the 30 samples,
-with identical output and **zero missed commits**.
+The integrated implementation retained all 73 known failing-test occurrences
+across 30 samples in three fresh competition-limited Docker runs. Every run was
+valid, with deterministic output and **zero missed commits**.
 
-| Measure | Result |
-| --- | ---: |
-| Sum of busiest-worker loads | 122.146 s |
-| Worker overhead: 38 workers at 2 s | 76.000 s |
-| Miss penalty | 0.000 s |
-| Simulated total | 198.146 s |
-| Three-run median including measured CPU | 201.5 s |
-| Five-run median including measured CPU | 201.5 s |
-| Previously submitted version, local three-run score | 290.6 s |
-| Starter baseline | 1,614.1 s |
-| Peak selector RSS, sample runs | 277.88 MiB |
-| Output per sample batch | 16,711 bytes |
-| Regression tests in pinned Docker | 174 passed |
+| Version | Simulated seconds | Three-run Docker median | Missed commits |
+| --- | ---: | ---: | ---: |
+| Before (`205e093`) | 198.146 | 199.9 | 0 |
+| Integrated class dependencies | 163.788 | 165.9 | 0 |
 
-This is a **30.7% reduction** in the local three-run score. The exact
-simulated cost fell by 90.543 seconds; the additional proof data consumes some
-CPU, but the net scoring gain remains large. All 73 known failing-test occurrences
-are selected. The supplied scorer and an independent integer-arithmetic checker
-agree, including one 300-second penalty per missed commit and half-up rounding.
+The class-specific change saves **34.358 simulated seconds (17.34%)** while
+preserving the existing callable, factory, comparison, subprocess and scheduling
+optimizations. The original submitted version `f659c6224811` costs 288.689
+simulated seconds on this same sample batch.
 
-Independent checks executed 31 generated mutations with 7,548 mutant test
-executions. All 680 observed failing-test occurrences were selected. The scopes
-vary: factory cases and the single-line lambda case include full-suite runs;
-other cases use affected tests plus fixed subsets. This is evidence, not proof
-of correctness for every hidden patch.
+Busiest-worker loads total 93.788 seconds; 35 occupied workers add 70 seconds;
+miss penalties are zero. Peak measured RSS was 271.83 MiB, and stdout was
+9,746 bytes. All **184 regression tests passed** in the pinned Docker image.
+Integrated selections were also checked against 34 previously executed mutation
+cases: all 686 recorded failing-test occurrences remain selected. Those cases
+include three full-suite `TriggerProperties` mutations. Other mutation scopes
+vary, so this is evidence rather than proof for every hidden patch.
 
-Measured CPU includes a small measurement parent. These are **local sample
-scores, not official leaderboard scores**. See the
+These are **local sample scores, not official leaderboard results**. CPU includes
+a small measurement parent and varies by machine. See the
 [submission audit](reports/SUBMISSION_AUDIT.md),
-[three-run results](reports/sample-validation.json),
-[five-run results](reports/sample-validation-five-runs.json), and
-[baseline provenance](reports/baseline-validation.json).
+[class dependency explanation](reports/CLASS_DEPENDENCY_AUDIT.md),
+[fresh Docker measurements](reports/class-integration-after.json), and
+[integration correctness evidence](reports/class-integration-correctness.json).
+Older three/five-run reports are retained as historical baseline evidence.
 
 ## Selection
 
@@ -103,6 +97,15 @@ then compares the old and new ASTs:
   are retained separately. Changing a class attribute with one of these names
   falls back to the full suite because its effects may have occurred at import
   time, before per-test constructor tracing begins.
+- A class-qualified schema profile refines the collection fallback for
+  `arg_types` when unchanged ordered, unique string keys retain boolean values.
+  It records readers of the exact defining class and import-time derived
+  `required_args` sets, including inherited fields. Constructors, source-file
+  readers, reflective readers and uncertain tests remain selected. Unknown
+  collection consumers, escaped collection reflection, custom metaclasses,
+  class-local aliases, changed keys and non-boolean values retain the fallback.
+  The profile is derived only from the unchanged pinned baseline, without
+  patch IDs, failure labels or precomputed outcomes for proposed changes.
 - An AST-preserving edit still selects tests that read the source file as data.
   Comment-shaped encoding declarations are parsed rather than assumed harmless.
 - Changes to fixtures and other non-Python files select their recorded readers.
@@ -246,6 +249,8 @@ python /app/build_callable_map.py --source /tmp/sqlglot --source-manifest /input
 python /app/build_subprocess_map.py --source /tmp/sqlglot --source-manifest /input/manifest.json --map /output/coverage-map.json.gz --output /output/coverage-map.json.gz
 python /app/build_comparison_map.py --source /tmp/sqlglot --source-manifest /input/manifest.json --map /output/coverage-map.json.gz --output /output/comparison-map.json.gz
 python /app/enrich_map.py --input-map /output/coverage-map.json.gz --output-map /output/coverage-map.json.gz --comparison-profile /output/comparison-map.json.gz
+python /app/build_class_map.py --source /tmp/sqlglot --source-manifest /input/manifest.json --map /output/coverage-map.json.gz --output /output/class-map.json.gz
+python /app/enrich_map.py --input-map /output/coverage-map.json.gz --output-map /output/coverage-map.json.gz --class-profile /output/class-map.json.gz
 ```
 
 Do not use its development-only `--test` subset option for a final map. Inspect

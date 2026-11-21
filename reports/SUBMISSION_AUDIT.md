@@ -1,104 +1,79 @@
-# Scoring optimization audit — 21 November 2026
+# Integrated submission audit
 
-The previously submitted commit `f659c6224811783325de7701c225b783427e6eed`
-remains in history. The user supplied its official result: 367.501 simulated
-seconds, roughly 2.43 CPU seconds, and **zero missed commits in all three runs**.
-That official 369.9-second score used a different batch from the local samples.
-The new implementation has not been submitted to the contest platform by this
-agent. Its official score and rank require a new submission.
+This change builds on `205e093b3feb38913cb4313a252aa456d25513b2`. The earlier
+submitted commits remain in Git history. It adds class-qualified schema
+dependencies without replacing existing optimizations or map data.
 
-## Exact local scoring
+## Fresh local score
 
-| Component, all 30 sample commits | Seconds |
-| --- | ---: |
-| Busiest-worker loads | 122.146 |
-| 38 nonempty workers × 2 seconds | 76.000 |
-| 0 missed commits × 300 seconds | 0.000 |
-| Simulated total | 198.146 |
-| Three-run median, including measured process CPU | **201.5** |
-| Five-run median, including measured process CPU | **201.5** |
-| Previous local three-run median | 290.6 |
+| Version | Simulated seconds | Three-run Docker median | Missed commits |
+| --- | ---: | ---: | ---: |
+| Before (`205e093`) | 198.146 | 199.9 | 0 |
+| Integrated class dependencies | 163.788 | 165.9 | 0 |
 
-The three-run improvement is 30.7%. All eight outputs are identical;
-all 73 sample failing-test occurrences are selected. Arithmetic uses integer
-milliseconds and final median rounding uses integer microseconds. The untouched
-supplied scorer agrees with the independent accounting on every run. CPU
-includes full selector teardown and a small measurement parent; official server
-CPU may differ. Worker startup cost is normal cost, not a missed-commit penalty.
+All six comparison runs were valid and retained all 73 known failing-test
+occurrences. Each version produced deterministic output. The supplied scorer
+and independent integer-millisecond accounting agree. The integrated cost is
+93.788 seconds of busiest-worker loads plus 70.000 seconds for 35 workers, with
+zero 300-second miss penalties. Median rounding follows the half-up rule.
 
-## What changed and why
+The improvement is 34.358 simulated seconds (17.34%). Only the targeted
+`TriggerProperties.arg_types` sample changes: 1,620 tests / four workers /
+36.817 seconds becomes seven tests / one worker / 2.459 seconds. The other
+29 sample selections are unchanged. These local numbers do not establish a new
+official hidden-set score; the previously supplied 369.9-second official result
+used the server's batch. No contest-platform submission is performed here.
 
-- AST equality avoids repeatedly constructing large formatted strings; parsed
-  trees are reused and empty decorator scans are skipped.
-- Baseline Python child tracing replaces a blanket uncertain-test inclusion with
-  whole-file dependencies. Unsupported children retain uncertainty.
-- Exact collection call events allow single-line dispatch lambda refinement.
-  Nested structural edits retain their enclosing control-flow boundary.
-- Inert forwarding-only closure factories with immutable captures retain their
-  callers, class consumers and attribute readers. Unknown inheritance/hooks,
-  persistent effects and import-time invocation retain broad selection.
-- Raw operand observations support site-wide comparison equivalence. Every
-  observed result must stay the same under a proven pure comparison. The rule
-  cannot override existing unsafe/import/decorator fallbacks, cannot cross other
-  edited files, and preserves source, reflection and uncertain-test dependencies.
-  Mixed opaque/value comparisons remain unknown because of reflected equality.
+## Correctness and preservation
 
-Independent review found and fixed cross-test cache contamination and reflected
-equality counterexamples before enabling comparison pruning. It also fixed the
-recorder's handling of unsupported replay so instrumentation cannot replace the
-original comparison result with a recorder exception.
+- All existing map entries are equal to the pre-integration map after removing
+  the new `class_attribute_profile` entry. Unrelated Python modules are unchanged.
+  Callable, factory, comparison, subprocess, AST and scheduling optimizations
+  therefore remain present.
+- The integrated runtime modules and map match the validated isolated candidate
+  byte for byte. Image contents were independently hashed against the worktree.
+- A fresh regression run passed **184 tests** in pinned Python 3.13 Docker, with
+  no skipped regression tests.
+- Integrated selections were rechecked against **34 previously executed mutation
+  cases**, retaining all **686 recorded failing-test occurrences**. This pass
+  reselected the tests; it did not repeat the previous full mutant-suite runs.
+  Prior selections were frozen before those actual executions.
+- The three class-schema cases previously ran the entire baseline suite and
+  produced 3, 0 and 3 failing tests respectively. The merged Docker image still
+  selects the same seven tests and misses none of those failures.
+- The final class-profile builder ran the complete unchanged baseline:
+  1,620 tests and 25,440 subtests passed, with one expected environment skip.
+  It verified source Git blobs and exact test IDs and found no collection errors,
+  opaque reflection contexts or background-thread reads.
 
-## Correctness evidence
+This remains a baseline dependency heuristic. The observations do not prove
+universal correctness for hidden mutations, arbitrary native reflection or
+persistent cross-test data flows. Known unsupported cases keep the conservative
+fallback; the schema profile applies only to its explicit boolean-value contract.
 
-All **174 regression tests pass** in the pinned Python 3.13 Docker image. The
-original full baseline and new instrumented baseline each passed 1,620 tests and
-25,440 subtests, with one expected SQLite skip. New preparation checks verify all
-source Git blobs and the exact baseline node-ID list.
+## Runtime and submission constraints
 
-| Independent validation | Mutations | Mutant test executions | Observed failures | Omitted |
-| --- | ---: | ---: | ---: | ---: |
-| Original adversarial subset, rerun | 15 | 270 | 53 | 0 |
-| Structural and lambda cases | 4 | 3,898 | 622 | 0 |
-| Closure capture cases, full suite | 2 | 3,240 | 1 | 0 |
-| Comparison equivalence and changed-behavior cases | 10 | 140 | 4 | 0 |
+The root Dockerfile still uses the starter's pinned linux/amd64 Python base and
+copies committed runtime files and the baseline map. A fresh no-cache local
+build succeeded. It adds no package download or map-generation step to submission
+builds. The separately reproducible map builder is not part of scored execution.
 
-Choices were frozen before mutant execution. Raw mutant patches and failure
-lists stay outside the submission repository and runtime. Aggregate reports are
-linked below. The 38 executed tests actually pruned in the comparison validation
-all passed. These tests do not establish universal hidden-set soundness; unknown
-reflection, cross-module state and environment behavior remain heuristic limits.
+Fresh runs used two CPUs, 4 GiB memory, a 256-process limit, user 65534, HOME
+`/tmp`, no network, a read-only root and an initially empty 64 MiB tmpfs.
+Peak RSS was 271.83 MiB and the largest measured wall time was 2.937
+seconds, including Docker startup. Stdout was 9,746 bytes of valid JSONL, below
+2 MB. Every commit has one line, no test is duplicated, and occupied workers
+never exceed eight. Logs go to stderr.
 
-## Submission and resource rules
-
-- Root Dockerfile uses the starter's exact pinned Linux/amd64 Python image and
-  copies committed files. Build downloads are only the permitted Docker Hub base.
-- A fresh isolated BuildKit worker had its actual 4-core/8-GiB settings inspected.
-  The no-cache build completed in **14.203 seconds**, below the 600-second limit.
-- Operand-map preparation took **647.631 seconds offline**. It is not part of
-  the submission build; the generated map is committed and copied into the image.
-- Runtime limits were inspected: 2 CPU cores, 4 GiB, 256 processes, UID/GID 65534,
-  HOME `/tmp`, read-only root, initially empty 64-MiB tmpfs, only loopback networking.
-- Sample peak RSS was 277.88 MiB. The 45-commit capacity check took
-  6.515 seconds and 283.93 MiB,
-  below the final 270-second/4-GiB limits. That batch repeats samples and measures
-  capacity only, not correctness on unseen final data.
-- Output is valid UTF-8 JSONL, one line per commit, no duplicate/unknown tests,
-  at most eight occupied workers and 16,711 bytes on the samples,
-  below 2 MB. Logs go to stderr. Unknown patches/maps retain a safe broad fallback.
-- Runtime contents were inspected: no sample answers, samples, mutant labels,
-  network calls or patch fingerprints. Maps contain only pinned-baseline source,
-  coverage, imports/readers, class dependencies and raw operand observations.
-  Current test numbers are joined through node IDs, not hardcoded.
-- The public repository keeps prior submitted commits. Its final recorded size
-  is below 20 MB and it uses neither gitlinks nor Git LFS. Administrative team
-  membership, submission quotas and final chosen commit remain platform state.
+Image file hashes confirm that samples, answers, mutation labels, builders and
+validation reports are absent from `/app`. The map records baseline dependencies,
+not patch fingerprints or lookup tables of failures. Test numbers are joined
+through node IDs. The public repository retains the previous submitted history.
 
 ## Evidence
 
-- [Three runs](sample-validation.json) and [five runs](sample-validation-five-runs.json)
-- [Runtime/build inspection](runtime-audit.json) and [capacity](capacity-validation.json)
-- [Baseline provenance](baseline-validation.json)
-- [Adversarial subset](heldout-summary.json)
-- [Precision mutations](precision-validation-summary.json)
-- [Factory mutations](factory-validation-summary.json)
-- [Comparison mutations](comparison-validation-summary.json)
+- [Before](class-integration-before.json) and [after](class-integration-after.json): fresh three-run Docker measurements.
+- [Correctness and runtime hashes](class-integration-correctness.json): integration preservation and mutation rechecks.
+- [Class dependency design](CLASS_DEPENDENCY_AUDIT.md): contract, workflow and fallback behavior.
+- [Previous optimization audit](BASELINE_205E093_AUDIT.md): historical measurements and earlier mutation execution scopes.
+- [Baseline provenance](baseline-validation.json): pinned source and environment evidence.

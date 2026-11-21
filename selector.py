@@ -20,6 +20,7 @@ from attribute_dependencies import build_attribute_readers
 from dependency_safety import unsafe_functions
 from selection_precision import function_lines, lambda_intervals
 from factory_dependencies import factory_intervals
+from class_dependencies import class_attribute_tests
 from baseline_comparisons import changed_comparison, ordinary_function_site, unchanged_tests
 
 PINNED_COMMIT = "eb11aec4be8cb2122afe713a4816662c3f0fb2fa"
@@ -291,6 +292,11 @@ class SelectionEngine:
                     if not compare_body(left.body, right.body, prefix + left.name + "."):
                         return False
                 elif isinstance(left, (ast.Assign, ast.AnnAssign)):
+                    class_tests = class_attribute_tests(left, right, edit.path, prefix.rstrip("."), self.mapping)
+                    if class_tests is not None:
+                        selected.update(self._numbers(class_tests))
+                        selected.update(self._class_selection(edit.path, prefix.rstrip("."), file))
+                        continue
                     collection_calls = (file.get("collection_callable_lines")
                                         if self.mapping.get("callable_collection_version") == 1 else None)
                     unsafe_names = {node.name for node in ast.walk(old)
