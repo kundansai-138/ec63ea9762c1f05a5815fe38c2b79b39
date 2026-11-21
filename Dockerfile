@@ -17,6 +17,14 @@ RUN python -m pip install --no-cache-dir --no-deps --disable-pip-version-check \
 COPY prepare_runtime.py coverage-map.json.gz /app/
 RUN python /app/prepare_runtime.py /opt/sqlglot /app/coverage-map.json.gz
 
-COPY selector.py scheduling.py attribute_dependencies.py dependency_safety.py selection_precision.py factory_dependencies.py ast_equal.py baseline_comparisons.py class_dependencies.py tokenizer_dependencies.py verification_plan.py verify.py runner.py isolation.py tokenizer-profile.json.gz verify-profile.json isolation-map.json.gz /app/
+COPY tpc_fingerprint.py runner.py /app/
+# Fingerprint of what the TPC executor tests compute on the pinned commit.
+# Its own check that the result has no "error" values keeps a broken build visible.
+RUN cd /tmp && python /app/tpc_fingerprint.py /opt/sqlglot /app/tpc-fingerprint.json \
+    && python -c "import json,sys; d=json.load(open('/app/tpc-fingerprint.json')); sys.exit(any(v.startswith('error') for v in d.values()))" \
+    && chmod 644 /app/tpc-fingerprint.json \
+    && find /opt/sqlglot -name __pycache__ -newer /app/tpc_fingerprint.py -prune -exec chmod -R a+rX {} +
+
+COPY selector.py scheduling.py attribute_dependencies.py dependency_safety.py selection_precision.py factory_dependencies.py ast_equal.py baseline_comparisons.py class_dependencies.py tokenizer_dependencies.py verification_plan.py verify.py runner.py isolation.py tpc_fingerprint.py tokenizer-profile.json.gz verify-profile.json isolation-map.json.gz /app/
 USER 65534:65534
 CMD ["python", "/app/selector.py"]

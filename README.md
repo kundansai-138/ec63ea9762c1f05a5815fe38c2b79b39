@@ -162,6 +162,29 @@ the complete suite. If the only difference is the body of a nested function,
 the nested `def` line itself is not counted, because defining a function does
 not run it.
 
+### Fingerprinting the TPC executor tests
+
+`test_execute_tpcds` (21.5 s) is the most expensive test that patches reach,
+and running it costs over 100 CPU seconds. On synthetic patches it accounted
+for about a quarter of all scheduled time. With `test_execute_tpch` and
+`test_optimized_tpch` it is judged by `tpc_fingerprint.py` instead of being run.
+
+The test's outcome is determined by what sqlglot produces before any query
+runs: the parsed queries (also after a pickle round trip), the optimized
+expressions, the logical plans, the Python source generated for every plan
+step and every replaced subquery, the DuckDB SQL for the expected results, and
+the executor's run-time constants. The fingerprint hashes all of these. The
+image build computes it for the pinned commit, where the tests pass. A patched
+tree with the same hashes runs the same computation on the same data, so the
+tests are dropped. Patches touching `sqlglot/executor/`, `sqlglot/helper.py` or
+`tests/` (including the fixtures) are never fingerprinted. The check runs only
+when dropping the tests saves at least 6 simulated seconds.
+
+Validation: on 800 synthetic patches, the fingerprint matched on every patch
+where the real tests were run afterwards and all of them passed. On the two
+sample commits where `test_execute_tpcds` truly fails, the hashes differed and
+the test stayed selected.
+
 ### Running the candidates
 
 `verification_plan.py` decides, per commit, whether running candidates is worth

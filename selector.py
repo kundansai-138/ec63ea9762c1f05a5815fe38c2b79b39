@@ -498,6 +498,11 @@ class SelectionEngine:
             return set(self.all_tests)
 
 
+# Fingerprinting the TPC tests costs a few CPU seconds; it is only worth it
+# when dropping them saves more scheduled time than that.
+FINGERPRINT_MIN_SAVING = 6.0
+
+
 def _load_json(path: Path, compressed: bool):
     try:
         if compressed:
@@ -558,13 +563,14 @@ def main():
         unverifiable_files = []
 
     # Stage 1: baseline dependencies name the tests each change can reach.
-    decisions, jobs = [], []
+    decisions, jobs, infos = [], [], {}
     for patch in sorted((args.data / "commits").glob("*.patch")):
         try:
             chosen = engine.select(patch.read_text("utf-8"))
             info = engine.info
         except UnicodeError:
             chosen, info = set(engine.all_tests), {"edits": None}
+        infos[patch.stem] = info
         job = None
         if (can_verify and info.get("edits") is not None
                 and not any(edit.path in unverifiable_files for edit in info["edits"])):
@@ -600,21 +606,72 @@ def main():
             print(f"verification stopped: {error!r}", file=sys.stderr)
 
     explain = bool(os.environ.get("BR_EXPLAIN"))
-    cache, total, ran, dropped = {}, 0, 0, 0
+    candidates_before = {}
     for commit, chosen, job in decisions:
-        candidates = len(chosen)
+        candidates_before[commit] = len(chosen)
         if job is not None:
-            ran += len(job.numbers)
             for number in job.numbers:
                 if job.outcomes.get(by_number[number]["id"]) == "pass":
                     chosen.discard(number)
-                    dropped += 1
+
+    # Stage 3: the TPC executor tests cost up to 21.5 s each. When a patch
+    # leaves the executor, helper, tests and fixtures alone, fingerprint what
+    # those tests compute (tpc_fingerprint.py). Equal to the pinned commit's
+    # fingerprint means the same computation as there, where they pass.
+    fingerprinted = {}
+    if can_verify:
+        try:
+            import tpc_fingerprint
+            from verification_plan import cost_milliseconds
+
+            baseline = _load_json(here / "tpc-fingerprint.json", False)
+            ids = {test["id"]: test["number"] for test in tests}
+            tpc = {ids[name] for name in tpc_fingerprint.TESTS.values() if name in ids}
+            wanted = []
+            if isinstance(baseline, dict) and tpc:
+                for commit, chosen, _ in decisions:
+                    info = infos.get(commit) or {}
+                    hit = chosen & tpc
+                    if not hit or info.get("edits") is None:
+                        continue
+                    paths = [edit.path for edit in info["edits"]]
+                    if (not tpc_fingerprint.eligible(paths)
+                            or any(path in unverifiable_files for path in paths)):
+                        continue
+                    saving = (cost_milliseconds([by_number[n] for n in sorted(chosen)])
+                              - cost_milliseconds([by_number[n] for n in sorted(chosen - hit)])) / 1000.0
+                    if saving < FINGERPRINT_MIN_SAVING:
+                        continue
+                    wanted.append((commit, {edit.path: edit.source.encode("utf-8")
+                                            for edit in info["edits"]}))
+            if wanted:
+                found = tpc_fingerprint.run_jobs(args.source, wanted, "/tmp/br-fp",
+                                                 started + args.wall_limit)
+                for commit, chosen, _ in decisions:
+                    hashes = found.get(commit)
+                    if not hashes:
+                        continue
+                    same = {ids[name] for name, value in hashes.items()
+                            if name in ids and isinstance(value, str)
+                            and not value.startswith("error") and value == baseline.get(name)}
+                    fingerprinted[commit] = len(chosen & same)
+                    chosen.difference_update(same)
+        except Exception as error:  # noqa: BLE001 - keep the selections
+            print(f"fingerprinting stopped: {error!r}", file=sys.stderr)
+
+    cache, total, ran, dropped = {}, 0, 0, 0
+    for commit, chosen, job in decisions:
+        candidates = candidates_before[commit]
+        if job is not None:
+            ran += len(job.numbers)
+            dropped += sum(1 for n in job.numbers if job.outcomes.get(by_number[n]["id"]) == "pass")
         if explain:
             print(json.dumps({
                 "explain": commit, "candidates": candidates, "final": len(chosen),
                 "run": [by_number[n]["id"] for n in job.numbers] if job else [],
                 "outcomes": job.outcomes if job else {},
                 "cpu": round(sum(job.cpu.values()), 3) if job else 0.0,
+                "fingerprint_dropped": fingerprinted.get(commit),
             }, separators=(",", ":")), file=sys.stderr)
         key = frozenset(chosen)
         if key not in cache:
