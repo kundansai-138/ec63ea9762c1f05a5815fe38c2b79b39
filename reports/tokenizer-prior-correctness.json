@@ -1,0 +1,322 @@
+{
+  "base_commit": "d7cc9343ad21c39e53212e9b2b761489f67b6dfe",
+  "scope": "Integrated selections rechecked against recorded actual mutant failures; no new full mutant-suite executions in this integration pass.",
+  "mutation_cases": 34,
+  "observed_failing_test_occurrences": 686,
+  "omitted_failing_tests": 0,
+  "preserved_all_existing_map_entries": true,
+  "runtime_image_matches_worktree": true,
+  "runtime_file_sha256": {
+    "selection_precision.py": "a6d36fdde7c8e037c915db05057e0a6411a34c3e136a9ebd58f212a4b06fc954",
+    "attribute_dependencies.py": "285496d1c8db085560c7c621c028a3e0a699818c7965a8410a2c442189bbabc9",
+    "ast_equal.py": "54bf601507b049d0011ba2578271430fce4746dbf3bc6d139c835b8a1e8552e9",
+    "class_dependencies.py": "210e7a532959c633ac7f57fe4fb463a6bc619af7d9d90bd806bc30bf69d00268",
+    "tokenizer-profile.json.gz": "9e5bb38a5a3591c4cea6e29067b45602cb5743a2edb69af3c86b85710fbab559",
+    "coverage-map.json.gz": "28c88364f9eb689ed4e518956f5a7e117ac7c2c13907124873f69de86e365d6f",
+    "baseline_comparisons.py": "ce8bcea1b547ea46606b4a3d6d6a199cae1a8770e1e7432bd8c881f5f2baf4d0",
+    "dependency_safety.py": "9dcc1b875720cbc34257fa22bc8b526f2e4abc11f96d49b601d8061e6d4e7207",
+    "factory_dependencies.py": "5593abd97cf16969b03735034277ea8658555bd64611bfeb3b9eb1b5753ce5fa",
+    "scheduling.py": "d3db4c46d30fb50308fc9e1bb626fc22c02a491a219979726f1660c3091bb45e",
+    "tokenizer_dependencies.py": "9d8c38e258ed61f392a88b089fb20b0ffa427804c496e81b88c24034849dc34a",
+    "selector.py": "ca28309f7d51ce578c63e7eac4fd48c5ce577c26c2bbbd3bf09f48a7e51c9e65"
+  },
+  "class_profile_metadata": {
+    "background_thread": false,
+    "candidate_attributes": 706,
+    "collection_errors": [],
+    "complete": true,
+    "elapsed_seconds": 182.627,
+    "instrumentation": "class-qualified Python attribute and builtin reflection reads; recognized derived schema sets",
+    "opaque_reflection_contexts": [],
+    "outcomes": {
+      "passed": 27060,
+      "skipped": 1
+    },
+    "pytest": "9.2.0",
+    "pytest_exit_code": 0,
+    "python": "3.13.18",
+    "scope_dependencies": "shared fixture setup and module teardown propagated",
+    "worker_execution": "baseline process pools inlined with ForkingPickler transport"
+  },
+  "tokenizer_profile_metadata": {
+    "background_thread": false,
+    "builder_sha256": {
+      "build_callable_map.py": "60ce236faf4edc35c966675d46889c3e80cd0b29cd82a77e5760de7f987bdeff",
+      "build_map.py": "9fda87518a6c6f8863b2fddb8b21a1ee369aced7cb53f190091ddd3846a871c8",
+      "build_tokenizer_map.py": "e37062caff830d2a344ade266302cb31fb7edf55e1b47c616d070e27e7c15486",
+      "tokenizer_dependencies.py": "9d8c38e258ed61f392a88b089fb20b0ffa427804c496e81b88c24034849dc34a"
+    },
+    "candidate_attributes": 57,
+    "collection_errors": [],
+    "complete": true,
+    "elapsed_seconds": 236.92,
+    "instrumentation": "class-qualified direct fields and cached core instance provenance; unchanged dictionary key membership",
+    "opaque_reflection_contexts": [],
+    "outcomes": {
+      "passed": 27060,
+      "skipped": 1
+    },
+    "pytest": "9.2.0",
+    "pytest_exit_code": 0,
+    "python": "3.13.18",
+    "retained_core_instances": 48342,
+    "scope_dependencies": "shared fixture setup and module teardown propagated",
+    "unknown_core_contexts": [],
+    "worker_execution": "baseline process pools inlined with ForkingPickler transport"
+  },
+  "rows": [
+    {
+      "group": "factory",
+      "name": "role_target",
+      "selected": 71,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "factory",
+      "name": "full_columns",
+      "selected": 252,
+      "observed_failures": 1,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "equivalence_1",
+      "selected": 6,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "equivalence_2",
+      "selected": 3,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "equivalence_3",
+      "selected": 3,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "equivalence_4",
+      "selected": 4,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "equivalence_5",
+      "selected": 4,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "behavior_change_1",
+      "selected": 45,
+      "observed_failures": 1,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "behavior_change_2",
+      "selected": 32,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "behavior_change_3",
+      "selected": 5,
+      "observed_failures": 1,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "behavior_change_4",
+      "selected": 8,
+      "observed_failures": 1,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "comparison",
+      "name": "behavior_change_5",
+      "selected": 25,
+      "observed_failures": 1,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "class_schema",
+      "name": "optional_table",
+      "selected": 7,
+      "observed_failures": 0,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "class_schema",
+      "name": "require_referenced_table",
+      "selected": 7,
+      "observed_failures": 3,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "class_schema",
+      "name": "reverse_all_flags",
+      "selected": 7,
+      "observed_failures": 3,
+      "omitted": 0,
+      "same_as_preexecution_selection": true
+    },
+    {
+      "group": "heldout",
+      "name": "persistent_dispatch",
+      "selected": 1620,
+      "observed_failures": 7,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "numeric_conversion",
+      "selected": 13,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "range_merge",
+      "selected": 6,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "topological_sort",
+      "selected": 94,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "name_factory",
+      "selected": 1386,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "serialization_dump",
+      "selected": 40,
+      "observed_failures": 3,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "serialization_load",
+      "selected": 40,
+      "observed_failures": 3,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "token_representation",
+      "selected": 27,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "numeric_parser",
+      "selected": 1620,
+      "observed_failures": 0,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "expression_name",
+      "selected": 1620,
+      "observed_failures": 8,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "normalize_identifier_result",
+      "selected": 315,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "numeric_default_limit",
+      "selected": 1620,
+      "observed_failures": 1,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "generator_result",
+      "selected": 1620,
+      "observed_failures": 7,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "slots_import_conflict",
+      "selected": 1620,
+      "observed_failures": 18,
+      "omitted": 0
+    },
+    {
+      "group": "heldout",
+      "name": "pure_comment_control",
+      "selected": 1,
+      "observed_failures": 0,
+      "omitted": 0
+    },
+    {
+      "group": "precision",
+      "name": "compound_insert",
+      "selected": 315,
+      "observed_failures": 309,
+      "omitted": 0
+    },
+    {
+      "group": "precision",
+      "name": "compound_kind",
+      "selected": 1620,
+      "observed_failures": 2,
+      "omitted": 0
+    },
+    {
+      "group": "precision",
+      "name": "compound_new_else",
+      "selected": 315,
+      "observed_failures": 310,
+      "omitted": 0
+    },
+    {
+      "group": "precision",
+      "name": "single_line_dispatch",
+      "selected": 5,
+      "observed_failures": 1,
+      "omitted": 0
+    }
+  ]
+}

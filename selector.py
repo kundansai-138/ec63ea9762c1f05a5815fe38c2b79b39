@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import time
+import zlib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -22,6 +23,7 @@ from dependency_safety import unsafe_functions
 from selection_precision import function_lines, lambda_intervals
 from factory_dependencies import factory_intervals
 from class_dependencies import class_attribute_tests
+from tokenizer_dependencies import tokenizer_attribute_tests
 from baseline_comparisons import changed_comparison, ordinary_function_site, unchanged_tests
 from verification_plan import Planner
 
@@ -238,6 +240,9 @@ class SelectionEngine:
         except (SyntaxError, ValueError):
             # The file no longer compiles: every test that imports it breaks.
             return self._module_scope(edit.path, selected | self._reflection())
+        # Reuse these already validated trees for the single-file comparison
+        # refinement; compiling and parsing the same patch again adds CPU cost.
+        self.comparison_trees = old, new
         if ast_equal(old, new):
             self.same_ast = True
             return selected
@@ -326,6 +331,11 @@ class SelectionEngine:
                     if not compare_body(left.body, right.body, prefix + left.name + "."):
                         return False
                 elif isinstance(left, (ast.Assign, ast.AnnAssign)):
+                    tokenizer_tests = tokenizer_attribute_tests(left, right, edit.path, prefix.rstrip("."), self.mapping)
+                    if tokenizer_tests is not None:
+                        selected.update(self._numbers(tokenizer_tests))
+                        selected.update(self._class_selection(edit.path, prefix.rstrip("."), file))
+                        continue
                     class_tests = class_attribute_tests(left, right, edit.path, prefix.rstrip("."), self.mapping)
                     if class_tests is not None:
                         selected.update(self._numbers(class_tests))
@@ -417,11 +427,11 @@ class SelectionEngine:
                     and self.comparison_eligible and not self.uncertain):
                 edit = edits[0]
                 file = self.files[edit.path]
-                old, new = self.trees[edit.path], _ast(edit.source)
+                old, new = self.comparison_trees
                 change = changed_comparison(old, new)
                 if change and ordinary_function_site(old, change[0]):
                     proven = unchanged_tests(old, new, self.comparisons.get("files", {}).get(edit.path, {}),
-                                             self.comparison_incomplete)
+                                             self.comparison_incomplete, change=change)
                     protected = self.uncertain | self._numbers(file.get("reads", [])) | self._reflection()
                     selected.difference_update(self._numbers(proven) - protected)
             return selected
@@ -435,7 +445,7 @@ def _load_json(path: Path, compressed: bool):
             with gzip.open(path, "rt", encoding="utf-8") as handle:
                 return json.load(handle)
         return json.loads(path.read_text("utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError, EOFError, zlib.error):
         return None
 
 
@@ -445,6 +455,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", type=Path, default=Path("/data"))
     parser.add_argument("--map", type=Path, default=here / "coverage-map.json.gz")
+    parser.add_argument("--tokenizer-profile", type=Path, default=here / "tokenizer-profile.json.gz")
     parser.add_argument("--profile", type=Path, default=here / "verify-profile.json")
     parser.add_argument("--isolation", type=Path, default=here / "isolation-map.json.gz")
     parser.add_argument("--source", default=os.environ.get("BLAST_SQLGLOT", "/opt/sqlglot"),
@@ -460,6 +471,16 @@ def main():
     if mapping is None:
         mapping = {}
         print("Coverage map unavailable; using the complete suite", file=sys.stderr)
+    # Supplemental evidence is stored separately to avoid duplicating the large
+    # original map in Git history. The contract checks commit, test IDs and
+    # completeness before any dependency refinement can use this artifact.
+    if isinstance(mapping, dict):
+        tokenizer_profile = _load_json(args.tokenizer_profile, True)
+        if tokenizer_profile is None:
+            print("Tokenizer profile unavailable; retaining existing fallbacks", file=sys.stderr)
+        else:
+            mapping["tokenizer_attribute_profile"] = tokenizer_profile
+
     def load_isolation():
         from isolation import IsolationMap
 

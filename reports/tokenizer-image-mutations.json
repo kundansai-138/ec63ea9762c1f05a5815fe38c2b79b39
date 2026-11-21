@@ -1,0 +1,119 @@
+{
+  "scope": "Final limited Docker output checked against actual mutant failures; collection errors conservatively affect all manifest tests in the failed module.",
+  "frozen_selections_match_final_image": true,
+  "mutation_cases": 12,
+  "stdout_sha256": "54233a81384df98498180f193dd3d8941fb33b0274dae04c7ffd05b0c0ed0aec",
+  "scoring_breakdown": {
+    "load_ms": 125256,
+    "overhead_ms": 68000,
+    "penalty_ms": 0,
+    "workers": 34,
+    "selected_tests": 6728,
+    "failing_tests": 46,
+    "selected_failing_tests": 46,
+    "missing_failing_tests": 0,
+    "commit_count": 12,
+    "misses": 0,
+    "simulated_ms": 193256,
+    "missed_commits": [],
+    "supplied_scorer_agrees": true
+  },
+  "observations": [
+    {
+      "case": "postgres_hex_base",
+      "full_suite": true,
+      "runtime_failed_tests": 1,
+      "tests_affected_by_collection_errors": 0,
+      "collection_errors": 0,
+      "scored_failed_tests": 1
+    },
+    {
+      "case": "hive_unicode_base",
+      "full_suite": true,
+      "runtime_failed_tests": 0,
+      "tests_affected_by_collection_errors": 0,
+      "collection_errors": 0,
+      "scored_failed_tests": 0
+    },
+    {
+      "case": "bigquery_octal_width",
+      "full_suite": false,
+      "runtime_failed_tests": 0,
+      "tests_affected_by_collection_errors": 0,
+      "collection_errors": 0,
+      "scored_failed_tests": 0
+    },
+    {
+      "case": "clickhouse_hex_limit",
+      "full_suite": false,
+      "runtime_failed_tests": 0,
+      "tests_affected_by_collection_errors": 0,
+      "collection_errors": 0,
+      "scored_failed_tests": 0
+    },
+    {
+      "case": "duckdb_byte_semantics",
+      "full_suite": false,
+      "runtime_failed_tests": 0,
+      "tests_affected_by_collection_errors": 0,
+      "collection_errors": 0,
+      "scored_failed_tests": 0
+    },
+    {
+      "case": "hive_surrogate_replacement",
+      "full_suite": false,
+      "runtime_failed_tests": 0,
+      "tests_affected_by_collection_errors": 0,
+      "collection_errors": 0,
+      "scored_failed_tests": 0
+    },
+    {
+      "case": "snowflake_unknown_escape",
+      "full_suite": true,
+      "runtime_failed_tests": 0,
+      "tests_affected_by_collection_errors": 0,
+      "collection_errors": 0,
+      "scored_failed_tests": 0
+    },
+    {
+      "case": "materialize_unicode_base",
+      "full_suite": false,
+      "runtime_failed_tests": 0,
+      "tests_affected_by_collection_errors": 0,
+      "collection_errors": 0,
+      "scored_failed_tests": 0
+    },
+    {
+      "case": "bigquery_changed_key",
+      "full_suite": false,
+      "runtime_failed_tests": 3,
+      "tests_affected_by_collection_errors": 0,
+      "collection_errors": 0,
+      "scored_failed_tests": 3
+    },
+    {
+      "case": "clickhouse_bad_map_type",
+      "full_suite": true,
+      "runtime_failed_tests": 0,
+      "tests_affected_by_collection_errors": 42,
+      "collection_errors": 1,
+      "scored_failed_tests": 42
+    },
+    {
+      "case": "hive_bad_tuple_shape",
+      "full_suite": false,
+      "runtime_failed_tests": 0,
+      "tests_affected_by_collection_errors": 0,
+      "collection_errors": 0,
+      "scored_failed_tests": 0
+    },
+    {
+      "case": "snowflake_hex_base_targeted",
+      "full_suite": true,
+      "runtime_failed_tests": 0,
+      "tests_affected_by_collection_errors": 0,
+      "collection_errors": 0,
+      "scored_failed_tests": 0
+    }
+  ]
+}

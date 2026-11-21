@@ -1,0 +1,42 @@
+{
+  "environment": "competition-limited Docker",
+  "run_count": 1,
+  "competition_run_count": false,
+  "score_scope": "local sample batch; not an official hidden-set score",
+  "cpu_measurement": "selector process plus measurement parent",
+  "runs": [
+    {
+      "run": 1,
+      "simulated_seconds": 234.445,
+      "cpu_seconds": 4.579905,
+      "cpu_microseconds": 4579905,
+      "wall_seconds": 5.937000000034459,
+      "misses": 0,
+      "missed_commits": [],
+      "stdout_bytes": 7199,
+      "stdout_sha256": "b9935688c4cfaa4182d5b4873f28e4a4658a4a18e7008c18a2fb3a8089a0639b",
+      "scoring_breakdown": {
+        "load_ms": 130445,
+        "overhead_ms": 104000,
+        "penalty_ms": 0,
+        "workers": 52,
+        "selected_tests": 1257,
+        "failing_tests": 133,
+        "selected_failing_tests": 133,
+        "missing_failing_tests": 0,
+        "commit_count": 45,
+        "misses": 0,
+        "simulated_ms": 234445,
+        "missed_commits": [],
+        "supplied_scorer_agrees": true
+      },
+      "total_microseconds": 239024905,
+      "total_seconds": 239.024905,
+      "peak_rss_mib": 268.2734375
+    }
+  ],
+  "deterministic_output": true,
+  "median_total_microseconds": 239024905,
+  "median_total_seconds": 239.024905,
+  "rounded_sample_score_seconds": 239.0
+}

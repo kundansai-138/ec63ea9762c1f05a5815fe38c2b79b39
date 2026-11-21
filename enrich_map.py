@@ -28,6 +28,7 @@ def main():
     parser.add_argument("--output-map", type=Path, required=True)
     parser.add_argument("--comparison-profile", type=Path)
     parser.add_argument("--class-profile", type=Path)
+    parser.add_argument("--tokenizer-profile", type=Path)
     args = parser.parse_args()
     with gzip.open(args.input_map, "rt", encoding="utf-8") as stream:
         mapping = json.load(stream)
@@ -35,7 +36,8 @@ def main():
         raise ValueError("Expected the pinned baseline coverage map")
     enrich(mapping)
     for profile_path, key in ((args.comparison_profile, "comparison_profile"),
-                              (args.class_profile, "class_attribute_profile")):
+                              (args.class_profile, "class_attribute_profile"),
+                              (args.tokenizer_profile, "tokenizer_attribute_profile")):
         if profile_path is None:
             continue
         with gzip.open(profile_path, "rt", encoding="utf-8") as stream:

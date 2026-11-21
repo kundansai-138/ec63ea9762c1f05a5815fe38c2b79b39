@@ -110,6 +110,16 @@ then compares the old and new ASTs:
   class-local aliases, changed keys and non-boolean values retain the fallback.
   The profile is derived only from the unchanged pinned baseline, without
   patch IDs, failure labels or precomputed outcomes for proposed changes.
+- A tokenizer profile follows class configuration fields into plain
+  `TokenizerCore` slots and records readers of cached core instances across test
+  contexts. It supports unchanged literal shapes and ordered dictionary keys.
+  The import-time numeric escape format derivation observes only those keys;
+  changes to values cannot change that derivation. Other collection consumers
+  retain the fallback. Constructor, source, reflection and incomplete-test
+  dependencies remain selected. Unknown/copied cores and reflection escapes
+  retain their entire contexts. The profile is generated from the complete
+  unchanged baseline and stored separately to preserve the existing map and
+  avoid another large map blob in submitted history.
 - An AST-preserving edit still selects tests that read the source file as data.
   Comment-shaped encoding declarations are parsed rather than assumed harmless.
 - Changes to fixtures and other non-Python files select their recorded readers.
@@ -319,6 +329,7 @@ python /app/build_comparison_map.py --source /tmp/sqlglot --source-manifest /inp
 python /app/enrich_map.py --input-map /output/coverage-map.json.gz --output-map /output/coverage-map.json.gz --comparison-profile /output/comparison-map.json.gz
 python /app/build_class_map.py --source /tmp/sqlglot --source-manifest /input/manifest.json --map /output/coverage-map.json.gz --output /output/class-map.json.gz
 python /app/enrich_map.py --input-map /output/coverage-map.json.gz --output-map /output/coverage-map.json.gz --class-profile /output/class-map.json.gz
+python /app/build_tokenizer_map.py --source /tmp/sqlglot --source-manifest /input/manifest.json --map /output/coverage-map.json.gz --output /output/tokenizer-profile.json.gz
 ```
 
 Do not use its development-only `--test` subset option for a final map. Inspect
@@ -332,9 +343,10 @@ Inspect and score the candidate before replacing the committed map:
 
 ```sh
 python -c 'import gzip,json; m=json.load(gzip.open("work/map-results/coverage-map.json.gz","rt")); print(json.dumps(m["metadata"],indent=2)); assert m["metadata"]["pytest_exit_code"] == 0; assert not m["metadata"]["collection_errors"]; assert m["metadata"]["test_subset"] is None'
-python selector.py --map work/map-results/coverage-map.json.gz --data sample > work/candidate.jsonl
+python selector.py --map work/map-results/coverage-map.json.gz --tokenizer-profile work/map-results/tokenizer-profile.json.gz --data sample > work/candidate.jsonl
 python score.py sample sample/answers.json work/candidate.jsonl
 cp work/map-results/coverage-map.json.gz coverage-map.json.gz
+cp work/map-results/tokenizer-profile.json.gz tokenizer-profile.json.gz
 make sample
 ```
 

@@ -134,13 +134,14 @@ def changed_comparison(before, after):
     return changes[0] if visit(before, after) and len(changes) == 1 else None
 
 
-def unchanged_tests(before, after, file_profile, incomplete=()):
+def unchanged_tests(before, after, file_profile, incomplete=(), *, change=None):
     """Return baseline-map indices with complete, unchanged pure observations.
 
     Call only for a patch with one semantically changed file. Source readers and
     uncertain tests must remain selected independently of this result.
     """
-    change = changed_comparison(before, after)
+    if change is None:
+        change = changed_comparison(before, after)
     if not change:
         return set()
     site, old_op, new_op = change

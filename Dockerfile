@@ -17,6 +17,6 @@ RUN python -m pip install --no-cache-dir --no-deps --disable-pip-version-check \
 COPY prepare_runtime.py coverage-map.json.gz /app/
 RUN python /app/prepare_runtime.py /opt/sqlglot /app/coverage-map.json.gz
 
-COPY selector.py scheduling.py attribute_dependencies.py dependency_safety.py selection_precision.py factory_dependencies.py ast_equal.py baseline_comparisons.py class_dependencies.py verification_plan.py verify.py runner.py isolation.py verify-profile.json isolation-map.json.gz /app/
+COPY selector.py scheduling.py attribute_dependencies.py dependency_safety.py selection_precision.py factory_dependencies.py ast_equal.py baseline_comparisons.py class_dependencies.py tokenizer_dependencies.py verification_plan.py verify.py runner.py isolation.py tokenizer-profile.json.gz verify-profile.json isolation-map.json.gz /app/
 USER 65534:65534
 CMD ["python", "/app/selector.py"]
