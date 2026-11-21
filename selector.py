@@ -8,6 +8,7 @@ import argparse
 import ast
 import gzip
 import json
+import os
 import re
 import sys
 import time
@@ -22,6 +23,7 @@ from selection_precision import function_lines, lambda_intervals
 from factory_dependencies import factory_intervals
 from class_dependencies import class_attribute_tests
 from baseline_comparisons import changed_comparison, ordinary_function_site, unchanged_tests
+from verification_plan import Planner
 
 PINNED_COMMIT = "eb11aec4be8cb2122afe713a4816662c3f0fb2fa"
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
@@ -153,10 +155,13 @@ def _literal_shape(node: ast.AST):
 
 
 class SelectionEngine:
-    def __init__(self, mapping: dict, tests: list[dict]):
+    def __init__(self, mapping: dict, tests: list[dict], isolation_loader=None):
         if not isinstance(mapping, dict) or not isinstance(mapping.get("files", {}), dict) or not isinstance(mapping.get("tests", []), list):
             mapping = {}
         self.mapping, self.tests = mapping, tests
+        # Loaded on first use: most changes never need the isolation map.
+        self._isolation_loader = isolation_loader
+        self._isolation = None
         self.files = mapping.get("files", {})
         self.all_tests = {t["number"] for t in tests}
         current = {t["id"]: t["number"] for t in tests}
@@ -175,9 +180,32 @@ class SelectionEngine:
         self.comparison_incomplete = {i for i, node in enumerate(mapping.get("tests", []))
                                      if node in self.comparisons.get("incomplete", [])}
         self.reflection_readers = None
+        # What the last select() call learned, for the verification stage.
+        self.info = {"edits": None, "assumed": set(), "text_only": False}
+        self.same_ast = False
 
     def _numbers(self, indices) -> set[int]:
         return {self.by_index[i] for i in indices if i in self.by_index}
+
+    def _module_scope(self, path: str, selected: set[int]) -> set[int]:
+        """The widest set a change confined to one file can reach.
+
+        A test is affected only if its own process executes the file's
+        module-level code, or reads the file as data. Without that evidence the
+        complete suite is returned.
+        """
+        if self._isolation is None and self._isolation_loader is not None:
+            try:
+                self._isolation = self._isolation_loader()
+            except Exception as error:  # noqa: BLE001 - fall back to the complete suite
+                print(f"isolation map unavailable: {error!r}", file=sys.stderr)
+            self._isolation_loader = None
+        if self._isolation is None:
+            return self.all_tests
+        importers = self._isolation.importers(path)
+        if importers is None:
+            return self.all_tests
+        return selected | importers | self._isolation.always | self.uncertain
 
     def _lines(self, file: dict, start: int, end: int) -> set[int]:
         return self._numbers(i for line, ids in file.get("lines", {}).items()
@@ -200,19 +228,25 @@ class SelectionEngine:
 
     def _python(self, edit: Edit) -> set[int]:
         self.comparison_eligible = False
+        self.same_ast = False
         file = self.files[edit.path]
         if edit.path not in self.trees:
             self.trees[edit.path] = _ast(file["source"])
-        old, new = self.trees[edit.path], _ast(edit.source)
         selected = self._numbers(file.get("reads", []))
+        try:
+            old, new = self.trees[edit.path], _ast(edit.source)
+        except (SyntaxError, ValueError):
+            # The file no longer compiles: every test that imports it breaks.
+            return self._module_scope(edit.path, selected | self._reflection())
         if ast_equal(old, new):
+            self.same_ast = True
             return selected
         # Function metadata can be inspected without entering a function body.
         # Retain every baseline reader of those reflective fields on semantic
         # Python changes, including readers reached through aliases.
         selected.update(self._reflection())
         if edit.path.startswith("tests/"):
-            return self.all_tests
+            return self._module_scope(edit.path, selected)
         if edit.path not in self.unsafe:
             if self.mapping.get("dependency_analysis_version") == 1 and "persistent_functions" in file:
                 self.unsafe[edit.path] = {tuple(bounds) for bounds in file["persistent_functions"]}
@@ -353,22 +387,29 @@ class SelectionEngine:
             return True
 
         if not compare_body(old.body, new.body):
-            return self.all_tests
+            return self._module_scope(edit.path, selected)
         self.comparison_eligible = True
         return selected
 
     def select(self, patch: str) -> set[int]:
+        self.info = {"edits": None, "assumed": set(), "text_only": False}
         try:
             if self.mapping.get("version") != 1 or self.mapping.get("commit") != PINNED_COMMIT:
                 return set(self.all_tests)
             edits = apply_patch(patch, self.files)
             selected = set(self.uncertain)
+            assumed, text_only = set(), True
             for edit in edits:
                 if edit.path.endswith(".py"):
                     selected.update(self._python(edit))
+                    text_only = text_only and self.same_ast
                 else:
                     readers = self._numbers(self.files[edit.path].get("reads", []))
                     selected.update(readers or self.all_tests)
+                    # A test that reads an edited data file is expected to fail.
+                    assumed.update(readers)
+                    text_only = False
+            self.info = {"edits": edits, "assumed": assumed, "text_only": text_only}
             # Raw baseline operands can establish equivalence for a single
             # pure comparison operator substitution. Never combine that proof
             # with other edited files, unknown observations, or source readers.
@@ -388,31 +429,125 @@ class SelectionEngine:
             return set(self.all_tests)
 
 
+def _load_json(path: Path, compressed: bool):
+    try:
+        if compressed:
+            with gzip.open(path, "rt", encoding="utf-8") as handle:
+                return json.load(handle)
+        return json.loads(path.read_text("utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def main():
+    started = time.monotonic()
+    here = Path(__file__).parent
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", type=Path, default=Path("/data"))
-    parser.add_argument("--map", type=Path, default=Path(__file__).with_name("coverage-map.json.gz"))
+    parser.add_argument("--map", type=Path, default=here / "coverage-map.json.gz")
+    parser.add_argument("--profile", type=Path, default=here / "verify-profile.json")
+    parser.add_argument("--isolation", type=Path, default=here / "isolation-map.json.gz")
+    parser.add_argument("--source", default=os.environ.get("BLAST_SQLGLOT", "/opt/sqlglot"),
+                        help="pinned sqlglot checkout used to run candidate tests")
+    parser.add_argument("--no-verify", action="store_true",
+                        help="answer from baseline dependencies alone")
+    parser.add_argument("--wall-limit", type=float, default=150.0,
+                        help="seconds after start at which verification stops")
     args = parser.parse_args()
     tests = json.loads((args.data / "tests.json").read_text("utf-8"))["tests"]
-    try:
-        with gzip.open(args.map, "rt", encoding="utf-8") as handle:
-            mapping = json.load(handle)
-    except (OSError, ValueError):
+    by_number = {test["number"]: test for test in tests}
+    mapping = _load_json(args.map, True)
+    if mapping is None:
         mapping = {}
         print("Coverage map unavailable; using the complete suite", file=sys.stderr)
-    engine, cache, total = SelectionEngine(mapping, tests), {}, 0
+    def load_isolation():
+        from isolation import IsolationMap
+
+        return IsolationMap(args.isolation, tests)
+
+    engine = SelectionEngine(mapping, tests, load_isolation)
+    planner = Planner(tests, _load_json(args.profile, False))
+    can_verify = (not args.no_verify and hasattr(os, "fork")
+                  and os.path.isdir(os.path.join(args.source, "sqlglot"))
+                  and os.path.isdir(os.path.join(args.source, "tests")))
+    # Files whose checkout bytes differ from the map's baseline text: a patch
+    # to one of them cannot be reproduced exactly, so it is never run.
+    unverifiable_files = _load_json(Path(args.source) / ".unverifiable-files.json", False)
+    if not isinstance(unverifiable_files, list):
+        can_verify = False
+        unverifiable_files = []
+
+    # Stage 1: baseline dependencies name the tests each change can reach.
+    decisions, jobs = [], []
     for patch in sorted((args.data / "commits").glob("*.patch")):
         try:
             chosen = engine.select(patch.read_text("utf-8"))
+            info = engine.info
         except UnicodeError:
-            chosen = engine.all_tests
+            chosen, info = set(engine.all_tests), {"edits": None}
+        job = None
+        if (can_verify and info.get("edits") is not None
+                and not any(edit.path in unverifiable_files for edit in info["edits"])):
+            try:
+                run = planner.plan(chosen, info["assumed"], info["text_only"])
+            except Exception as error:  # noqa: BLE001 - planning must never lose an answer
+                print(f"planning failed for {patch.stem}: {error!r}", file=sys.stderr)
+                run = []
+            if run:
+                from verify import Job
+
+                job = Job(
+                    patch.stem,
+                    {edit.path: edit.source.encode("utf-8") for edit in info["edits"]},
+                    [(by_number[n]["id"], by_number[n]["seconds"]) for n in run],
+                    sum(planner.estimate(n) for n in run),
+                )
+                job.numbers = run
+                jobs.append(job)
+        decisions.append((patch.stem, chosen, job))
+
+    # Stage 2: run the cheap candidates on the patched sources. A candidate is
+    # dropped only when it ran to completion and passed.
+    if jobs:
+        try:
+            from verify import Verifier
+
+            verifier = Verifier(args.source, wall_deadline=started + args.wall_limit,
+                                debug=bool(os.environ.get("BR_DEBUG")))
+            verifier.preload({by_number[n]["file"] for job in jobs for n in job.numbers})
+            verifier.run(jobs)
+        except Exception as error:  # noqa: BLE001 - keep the unverified selections
+            print(f"verification stopped: {error!r}", file=sys.stderr)
+
+    explain = bool(os.environ.get("BR_EXPLAIN"))
+    cache, total, ran, dropped = {}, 0, 0, 0
+    for commit, chosen, job in decisions:
+        candidates = len(chosen)
+        if job is not None:
+            ran += len(job.numbers)
+            for number in job.numbers:
+                if job.outcomes.get(by_number[number]["id"]) == "pass":
+                    chosen.discard(number)
+                    dropped += 1
+        if explain:
+            print(json.dumps({
+                "explain": commit, "candidates": candidates, "final": len(chosen),
+                "run": [by_number[n]["id"] for n in job.numbers] if job else [],
+                "outcomes": job.outcomes if job else {},
+                "cpu": round(sum(job.cpu.values()), 3) if job else 0.0,
+            }, separators=(",", ":")), file=sys.stderr)
         key = frozenset(chosen)
         if key not in cache:
             cache[key] = schedule([t for t in tests if t["number"] in chosen])
-        print(json.dumps({"commit": patch.stem, "workers": cache[key]}, separators=(",", ":")))
+        print(json.dumps({"commit": commit, "workers": cache[key]}, separators=(",", ":")))
         total += len(chosen)
-    print(f"Selected {total} test executions; {len(cache)} distinct selections", file=sys.stderr)
-    print(json.dumps({"selector_cpu_seconds": time.process_time()}), file=sys.stderr)
+    sys.stdout.flush()
+    print(f"Selected {total} test executions; {len(cache)} distinct selections; "
+          f"ran {ran} candidates in {len(jobs)} commits and dropped {dropped}", file=sys.stderr)
+    usage = os.times()
+    print(json.dumps({"selector_cpu_seconds": time.process_time(),
+                      "children_cpu_seconds": usage.children_user + usage.children_system,
+                      "wall_seconds": time.monotonic() - started}), file=sys.stderr)
 
 
 if __name__ == "__main__":
