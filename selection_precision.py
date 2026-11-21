@@ -11,14 +11,8 @@ import copy
 import dis
 from functools import lru_cache
 from types import CodeType
-
-
-def _dump(value):
-    if isinstance(value, ast.AST):
-        return ast.dump(value, include_attributes=False)
-    if isinstance(value, list):
-        return tuple(_dump(node) for node in value)
-    return value
+from ast_equal import ast_equal
+from dependency_safety import MUTATORS
 
 
 def _bindings(function):
@@ -53,8 +47,11 @@ def _bindings(function):
 def function_lines(before, after):
     """Refine a function with an unchanged signature to changed old statements.
 
-    Insertions, deletions, statement-kind changes and lexical binding changes
-    retain whole-function coverage. A changed condition keeps its compound
+    Top-level insertions, deletions and statement-kind changes retain whole-
+    function coverage. Inside an unchanged compound, those changes retain the
+    whole compound: its baseline header is evaluated before the changed suite
+    could run. Lexical binding changes still retain whole-function coverage.
+    A changed condition keeps its compound
     statement's header and body, including tests that took a different branch.
     Nested definitions keep the definition event, not just their changed bodies.
     """
@@ -62,14 +59,14 @@ def function_lines(before, after):
     # Comprehensions have their own scope, with a special outer-scope rule for
     # assignment expressions. Avoid collapsing those bindings into the parent
     # when a comprehension itself changes.
-    before_comprehensions = [_dump(node) for node in ast.walk(before) if isinstance(node, comprehensions)]
-    after_comprehensions = [_dump(node) for node in ast.walk(after) if isinstance(node, comprehensions)]
-    if before_comprehensions != after_comprehensions or _bindings(before) != _bindings(after):
+    before_comprehensions = [node for node in ast.walk(before) if isinstance(node, comprehensions)]
+    after_comprehensions = [node for node in ast.walk(after) if isinstance(node, comprehensions)]
+    if not ast_equal(before_comprehensions, after_comprehensions) or _bindings(before) != _bindings(after):
         return None
     ranges = []
 
     def compare(left, right):
-        if _dump(left) == _dump(right):
+        if ast_equal(left, right):
             return True
         if type(left) is not type(right):
             return False
@@ -85,13 +82,20 @@ def function_lines(before, after):
             other = getattr(right, name)
             if isinstance(value, list) and (not value or isinstance(value[0], ast.stmt)):
                 bodies.append((value, other))
-            elif _dump(value) != _dump(other):
+            elif not ast_equal(value, other):
                 ranges.append((left.lineno, left.end_lineno))
                 return True
         if not bodies:
             ranges.append((left.lineno, left.end_lineno))
             return True
-        return all(compare(a, b) for a, b in bodies)
+        # Suite structure changes do not invalidate the unchanged enclosing
+        # control-flow boundary. Keep its header as well as its body, since a
+        # newly populated else/finally suite may have no old executed line.
+        # The caller handles top-level function-suite changes conservatively.
+        if all(compare(a, b) for a, b in bodies):
+            return True
+        ranges.append((left.lineno, left.end_lineno))
+        return True
 
     return ranges if compare(before.body, after.body) else None
 
@@ -109,7 +113,7 @@ class _OpaqueLambdas(ast.NodeTransformer):
 
 def _changed_expression_lines(before, after, owner_line=None):
     owner_line = getattr(before, "lineno", owner_line)
-    if _dump(before) == _dump(after):
+    if ast_equal(before, after):
         return set()
     if type(before) is not type(after):
         return {owner_line}
@@ -166,14 +170,35 @@ def _mandatory_interior_line(code, definition_line):
     return None
 
 
-def lambda_intervals(before, after, file_source, collection_lines):
-    """Refine assignment edits confined to existing multiline lambda bodies.
+def _lambda_effects_unchanged(before, after, unsafe_call_names):
+    """Reject new execution paths and calls that can outlive this invocation."""
+    before_calls = [node for node in ast.walk(before) if isinstance(node, ast.Call)]
+    after_calls = [node for node in ast.walk(after) if isinstance(node, ast.Call)]
+    if len(before_calls) != len(after_calls):
+        return False
+    forbidden = MUTATORS | {"setattr", "delattr", "globals", "locals", "vars", "eval", "exec", "compile", "__import__"} | set(unsafe_call_names)
+    for left, right in zip(before_calls, after_calls):
+        if not ast_equal(left.func, right.func):
+            return False
+        name = left.func.id if isinstance(left.func, ast.Name) else left.func.attr if isinstance(left.func, ast.Attribute) else None
+        if name is None or name in forbidden:
+            return False
+        if len(left.args) != len(right.args) or [kw.arg for kw in left.keywords] != [kw.arg for kw in right.keywords]:
+            return False
+        if [isinstance(arg, ast.Starred) for arg in left.args] != [isinstance(arg, ast.Starred) for arg in right.args]:
+            return False
+    return True
+
+
+def lambda_intervals(before, after, file_source, collection_lines, collection_callable_lines=None, unsafe_call_names=()):
+    """Refine assignment edits confined to existing direct dispatch lambda bodies.
 
     Arguments, defaults, dictionary keys, targets and surrounding expressions
-    must stay identical. A mandatory interior line absent from collection
-    coverage proves the baseline lambda did not reach its body during imports.
-    First-line edits, generators, walrus bindings and class-cell changes fall
-    back, as do ambiguous code objects or collection-time body execution.
+    must stay identical. Exact collection call events, when available, prove
+    the baseline lambda did not enter its body during imports. Without that
+    evidence, require a mandatory interior line absent from collection coverage
+    and disallow first-line edits. Generators, walrus bindings, class-cell
+    changes and ambiguous code objects retain the broader boundary.
     """
     if not isinstance(before, (ast.Assign, ast.AnnAssign)) or type(before) is not type(after):
         return None
@@ -186,31 +211,38 @@ def lambda_intervals(before, after, file_source, collection_lines):
     old_transform, new_transform = _OpaqueLambdas(), _OpaqueLambdas()
     old = old_transform.visit(copy.deepcopy(before))
     new = new_transform.visit(copy.deepcopy(after))
-    if not old_transform.lambdas or len(old_transform.lambdas) != len(new_transform.lambdas) or _dump(old) != _dump(new):
+    if not old_transform.lambdas or len(old_transform.lambdas) != len(new_transform.lambdas) or not ast_equal(old, new):
         return None
     collection = set(collection_lines)
     codes = _lambda_codes(file_source)
     intervals = []
     for left, right in zip(old_transform.lambdas, new_transform.lambdas):
-        if _dump(left.body) == _dump(right.body):
+        if ast_equal(left.body, right.body):
             continue
         if (left.lineno, left.col_offset) not in direct_values:
             return None
         if _bindings(left) != _bindings(right):
             return None
-        changes = _changed_expression_lines(left.body, right.body)
-        if not changes or min(changes) <= left.lineno:
+        if not _lambda_effects_unchanged(left.body, right.body, unsafe_call_names):
             return None
-        if any(isinstance(node, (ast.Yield, ast.YieldFrom, ast.NamedExpr))
+        changes = _changed_expression_lines(left.body, right.body)
+        if not changes:
+            return None
+        if any(isinstance(node, (ast.Yield, ast.YieldFrom, ast.NamedExpr, ast.Lambda))
                for body in (left.body, right.body) for node in ast.walk(body)):
             return None
         candidates = codes.get(left.lineno, ())
         if len(candidates) != 1:
             return None
-        mandatory = _mandatory_interior_line(candidates[0], left.lineno)
-        if mandatory is None or mandatory in collection:
-            return None
-        if any(left.lineno < line <= left.end_lineno for line in collection):
+        if collection_callable_lines is None:
+            if min(changes) <= left.lineno:
+                return None
+            mandatory = _mandatory_interior_line(candidates[0], left.lineno)
+            if mandatory is None or mandatory in collection:
+                return None
+            if any(left.lineno < line <= left.end_lineno for line in collection):
+                return None
+        elif left.lineno in collection_callable_lines:
             return None
         intervals.append((left.lineno, left.end_lineno))
     return intervals

@@ -12,41 +12,41 @@ stderr. It needs no network, mutable source checkout, or package installation.
 
 ## Validated sample result
 
-All three-run and five-run Docker evaluations selected every known failing test
-across the 30 samples, with identical output and **zero missed commits**.
+All eight Docker runs selected every known failing test across the 30 samples,
+with identical output and **zero missed commits**.
 
 | Measure | Result |
 | --- | ---: |
-| Sum of busiest-worker loads | 202.689 s |
-| Worker overhead: 43 workers at 2 s | 86.000 s |
-| Miss penalty: 0 commits at 300 s | 0.000 s |
-| Simulated total | 288.689 s |
-| Three-run median including measured CPU | 290.6 s |
-| Five-run median including measured CPU | 290.5 s |
-| Previous submission three-run score | 330.4 s |
+| Sum of busiest-worker loads | 122.146 s |
+| Worker overhead: 38 workers at 2 s | 76.000 s |
+| Miss penalty | 0.000 s |
+| Simulated total | 198.146 s |
+| Three-run median including measured CPU | 201.5 s |
+| Five-run median including measured CPU | 201.5 s |
+| Previously submitted version, local three-run score | 290.6 s |
 | Starter baseline | 1,614.1 s |
-| Peak selector RSS, sample runs | under 196 MiB |
-| Output per sample batch | 24,000 bytes |
-| Regression tests in pinned Docker | 97 passed |
+| Peak selector RSS, sample runs | 277.88 MiB |
+| Output per sample batch | 16,711 bytes |
+| Regression tests in pinned Docker | 174 passed |
 
-The improvement is about 12% over the previous submission and 82% over the
-starter. An independent integer-arithmetic scorer agrees with the untouched
-supplied scorer. It explicitly checks the one-300-second-penalty-per-missed-commit
-rule and rounds the median in integer microseconds.
+This is a **30.7% reduction** in the local three-run score. The exact
+simulated cost fell by 90.543 seconds; the additional proof data consumes some
+CPU, but the net scoring gain remains large. All 73 known failing-test occurrences
+are selected. The supplied scorer and an independent integer-arithmetic checker
+agree, including one 300-second penalty per missed commit and half-up rounding.
 
-The baseline map was generated in the pinned image with the exact package lock:
-1,620 tests and 25,440 subtests passed, with the expected SQLite skip. Its source
-and dynamic coverage are unchanged; added static indexes come only from that
-baseline. An independent validation used 15 mutations outside sample-edited
-lines and a fixed 18-test subset per mutation. All 53 observed failures were
-selected. This subset validation does not prove safety on every hidden change.
+Independent checks executed 31 generated mutations with 7,548 mutant test
+executions. All 680 observed failing-test occurrences were selected. The scopes
+vary: factory cases and the single-line lambda case include full-suite runs;
+other cases use affected tests plus fixed subsets. This is evidence, not proof
+of correctness for every hidden patch.
 
-Measured CPU includes a small measurement parent. These are local sample scores,
-not official hidden-set scores. See the [submission audit](reports/SUBMISSION_AUDIT.md),
+Measured CPU includes a small measurement parent. These are **local sample
+scores, not official leaderboard scores**. See the
+[submission audit](reports/SUBMISSION_AUDIT.md),
 [three-run results](reports/sample-validation.json),
-[five-run results](reports/sample-validation-five-runs.json),
-[baseline provenance](reports/baseline-validation.json), and
-[independent mutation summary](reports/heldout-summary.json).
+[five-run results](reports/sample-validation-five-runs.json), and
+[baseline provenance](reports/baseline-validation.json).
 
 ## Selection
 
@@ -63,14 +63,31 @@ The selector applies each unified diff in memory and verifies its original
 context. For supported Python edits it parses and compiles the resulting source,
 then compares the old and new ASTs:
 
-- Existing function-body changes use whole-statement coverage when structure
-  and lexical bindings remain unchanged. Changed conditions retain their full
-  compound statement. Insertions, deletions, comprehension changes, and scope
-  changes retain whole-function coverage.
-- Direct multiline lambdas in dispatch dictionaries can use body coverage only
-  when bytecode establishes a mandatory interior line that did not execute
-  during collection. Dictionary keys, defaults, signatures, and surrounding
-  expressions must stay identical; ambiguous cases retain the full suite.
+- Existing function-body changes use whole-statement coverage when lexical
+  bindings remain unchanged. Changed conditions retain their full compound
+  statement. Structural changes within an unchanged compound retain its entire
+  interval; top-level structural changes, comprehension changes and scope changes
+  retain whole-function coverage.
+- Direct dispatch lambdas use baseline call events to distinguish import-time
+  construction from body execution, including single-line lambdas. Without that
+  evidence, a mandatory interior bytecode line must establish nonexecution.
+  Dictionary keys, defaults, signatures and call targets remain unchanged;
+  added mutation, introspection and persistent-state calls retain the fallback.
+- A literal argument change to an inert closure factory can retain closure-body
+  callers, class consumers and attribute readers. The factory must only define
+  and return the same undecorated closure; its body must not run during collection.
+  Recursive base-class checks reject unknown or custom construction hooks.
+- Function metadata readers are retained even when they do not call the changed
+  function. Changed docstrings also preserve the conservative fallback.
+- For an isolated equality/identity operator substitution in an ordinary function,
+  raw baseline operands must establish equivalence for every observation at the
+  entire site. A divergent or unknown observation disables the whole refinement;
+  it cannot override a persistent-state or import-time fallback. Replay supports
+  proven builtin comparison slots and preserves identity, numeric types, NaN and
+  signed zero. Mixed opaque-identity/value comparisons remain unknown because of
+  reflected equality. Source and reflective metadata readers remain selected.
+  The map stores baseline operands and contexts; it contains no precomputed
+  outcomes for proposed operator edits.
 - Existing or newly introduced persistent state, cached result producers,
   unrecognized decorators, and import-time function execution fall back to the
   full suite. Static analysis includes global/class state, aliases, mutable
@@ -99,8 +116,11 @@ package, or session. Teardown dependencies are conservatively attributed to the
 whole module. Baseline optimizer and executor `ProcessPoolExecutor` jobs run
 inline while recording, with real multiprocessing pickle round trips for
 arguments, results, initializers, and exceptions. This captures serialization
-dependencies as well as child computations and fixture reads. Tests that start
-other, untraced subprocesses remain conservatively included.
+dependencies as well as child computations and fixture reads. The separate
+`build_subprocess_map.py` traces supported Python children on the unchanged
+baseline and adds whole-file dependencies for imported, executed and opened
+files. It removes uncertainty only after a passing test and complete child exit
+reports. Unsupported or untraced subprocesses remain conservatively included.
 `SKIP_INTEGRATION=0` enables the executor tests.
 
 This is a baseline dependency heuristic, not proof that every hidden failure is
@@ -214,6 +234,19 @@ verify the extracted tree without requiring Git in the image.
 `Dockerfile.map` installs the supplied `requirements.lock` plus
 `coverage==7.13.5`; its downloads are from PyPI and the pinned Docker Hub base.
 Map generation itself runs without network access.
+
+After the initial map is generated, run these supplemental steps in the same
+locked preparation image with the extracted baseline at `/tmp/sqlglot`, the
+manifest at `/input/manifest.json`, and writable `/output`. Each command verifies
+the pinned source; the comparison step executes the full unmodified test suite.
+These preparation runs are separate from the scored submission build.
+
+```sh
+python /app/build_callable_map.py --source /tmp/sqlglot --source-manifest /input/manifest.json --map /output/coverage-map.json.gz --output /output/coverage-map.json.gz
+python /app/build_subprocess_map.py --source /tmp/sqlglot --source-manifest /input/manifest.json --map /output/coverage-map.json.gz --output /output/coverage-map.json.gz
+python /app/build_comparison_map.py --source /tmp/sqlglot --source-manifest /input/manifest.json --map /output/coverage-map.json.gz --output /output/comparison-map.json.gz
+python /app/enrich_map.py --input-map /output/coverage-map.json.gz --output-map /output/coverage-map.json.gz --comparison-profile /output/comparison-map.json.gz
+```
 
 Do not use its development-only `--test` subset option for a final map. Inspect
 the generated metadata for collection errors, failed/skipped tests, dependency

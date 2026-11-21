@@ -1,0 +1,12 @@
+{
+  "method": "Two independent literal-capture mutations; selections frozen before execution; every baseline test executed for each mutation",
+  "baseline_test_count": 1620,
+  "baseline_exit_code": 0,
+  "mutations": 2,
+  "mutant_test_executions": 3240,
+  "observed_failing_test_occurrences": 1,
+  "observed_failures_omitted": 0,
+  "harmless_control_mutations": 1,
+  "scope": "Full pinned test suite for these two mutations; not a proof for arbitrary hidden changes",
+  "raw_failure_lists_in_runtime": false
+}

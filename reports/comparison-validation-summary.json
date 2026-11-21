@@ -1,0 +1,12 @@
+{
+  "scope": "independent off-sample operator mutations; frozen choices; fixed subset plus baseline affected fast tests",
+  "mutations": 10,
+  "tests_executed": 140,
+  "baseline_tests": 60,
+  "failure_observations": 4,
+  "missed_mutations": 0,
+  "actually_pruned_test_executions": 38,
+  "observed_failures_omitted": 0,
+  "raw_failure_lists_in_runtime": false,
+  "method": "Five equivalence and five behavior-changing independent operator mutations; frozen integrated-selector choices, affected fast tests and fixed unrelated tests"
+}

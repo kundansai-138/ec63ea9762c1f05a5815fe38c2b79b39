@@ -1,108 +1,104 @@
-# Submission re-verification â€” 21 November 2026
+# Scoring optimization audit — 21 November 2026
 
-This audit covers the selector, map and reports in this commit. The prior public
-commit `3f73e5933e8a3f34fccecba5475258457697a695` remains in repository history.
-No official contest submission was made by this audit.
+The previously submitted commit `f659c6224811783325de7701c225b783427e6eed`
+remains in history. The user supplied its official result: 367.501 simulated
+seconds, roughly 2.43 CPU seconds, and **zero missed commits in all three runs**.
+That official 369.9-second score used a different batch from the local samples.
+The new implementation has not been submitted to the contest platform by this
+agent. Its official score and rank require a new submission.
 
-## Exact penalty accounting
-
-The supplied `score.py` is unchanged from the starter. A separate implementation
-in `scoring_audit.py` independently calculates each component and asserts exact
-agreement with it on every benchmark run.
+## Exact local scoring
 
 | Component, all 30 sample commits | Seconds |
 | --- | ---: |
-| Sum of busiest-worker loads | 202.689 |
-| 43 occupied workers Ã— 2 seconds | 86.000 |
-| 0 missed commits Ã— 300 seconds | 0.000 |
-| Simulated total | **288.689** |
-| CPU in median three-run result | 1.923199 |
-| Median total before rounding | 290.612199 |
-| Half-up rounded three-run result | **290.6** |
-| Half-up rounded five-run result | **290.5** |
+| Busiest-worker loads | 122.146 |
+| 38 nonempty workers × 2 seconds | 76.000 |
+| 0 missed commits × 300 seconds | 0.000 |
+| Simulated total | 198.146 |
+| Three-run median, including measured process CPU | **201.5** |
+| Five-run median, including measured process CPU | **201.5** |
+| Previous local three-run median | 290.6 |
 
-A commit incurs one 300-second penalty if *any* failing test is omitted, even if
-several failures are omitted. Regression tests verify that case, penalties on
-multiple commits, empty workers, numeric-ID lookup, worker maxima, median
-selection and half-tenth rounding. Final totals use integer microseconds, avoiding
-the floating-point boundary error discovered in the earlier benchmark.
+The three-run improvement is 30.7%. All eight outputs are identical;
+all 73 sample failing-test occurrences are selected. Arithmetic uses integer
+milliseconds and final median rounding uses integer microseconds. The untouched
+supplied scorer agrees with the independent accounting on every run. CPU
+includes full selector teardown and a small measurement parent; official server
+CPU may differ. Worker startup cost is normal cost, not a missed-commit penalty.
 
-All 73 failing test occurrences in the sample answers are selected. All eight
-measured runs are valid and produce identical output. CPU includes the selector's
-complete process lifetime plus a small measurement parent; the parent's final
-few instructions are outside its last resource read. Official server CPU and
-hidden-set results can differ. The simulated total is exact for these outputs.
+## What changed and why
 
-## Technical rules
+- AST equality avoids repeatedly constructing large formatted strings; parsed
+  trees are reused and empty decorator scans are skipped.
+- Baseline Python child tracing replaces a blanket uncertain-test inclusion with
+  whole-file dependencies. Unsupported children retain uncertainty.
+- Exact collection call events allow single-line dispatch lambda refinement.
+  Nested structural edits retain their enclosing control-flow boundary.
+- Inert forwarding-only closure factories with immutable captures retain their
+  callers, class consumers and attribute readers. Unknown inheritance/hooks,
+  persistent effects and import-time invocation retain broad selection.
+- Raw operand observations support site-wide comparison equivalence. Every
+  observed result must stay the same under a proven pure comparison. The rule
+  cannot override existing unsafe/import/decorator fallbacks, cannot cross other
+  edited files, and preserves source, reflection and uncertain-test dependencies.
+  Mixed opaque/value comparisons remain unknown because of reflected equality.
 
-| Requirement | Verification |
-| --- | --- |
-| Public, team-owned GitHub repository and root Dockerfile | Repository is public under the authenticated `kundansai-138` account; root Dockerfile and submitted history retained. |
-| Each patch independent against the pinned commit | Full baseline commit verified; each patch applies in memory to original source, never another patch's result. |
-| Correct input files and current test numbering | Reads `/data/commits` and `/data/tests.json`; joins baseline node IDs to current numbers. Unknown tests are retained. |
-| Exactly one JSON line per commit; logs only stderr | Official parser and independent checker validate all lines, complete IDs, exact object keys and UTF-8 output. |
-| At most 8 workers; no duplicates; valid test numbers | Validated by the supplied scorer and scheduler regression tests. Empty workers do not accrue cost. |
-| Stdout below 2 MB | 24,000 bytes per sample batch. The 45-commit capacity check produced 33,701 bytes. |
-| Build: 4 cores, 8 GB, at most 10 minutes | Fresh isolated BuildKit worker's actual CPU quota and 8 GiB memory limit inspected. Initial cold build 32.6 s; final no-cache build 4.2 s. |
-| Permitted build downloads only | Submission Dockerfile downloads only the starter's pinned Python Docker Hub base, then copies committed files. It performs no package installation or source fetch. |
-| Maps derived only from pinned baseline | Source Git blobs verified against full pinned commit. Full baseline trace passed 1,620 tests and 25,440 subtests, with the expected SQLite skip. New static indexes derive only from those unchanged sources and traces. |
-| No answer or edit-kind lookup | Runtime code has no sample-answer, patch-ID or edit-category failure table. Actual image contents inspected; sample answers are absent. Sample labels serve validation only. |
-| Repository below 20 MB; no LFS/submodules | Tracked artifacts and retained Git history are below the limit. Map is an ordinary committed gzip file; no gitlinks or LFS objects are used. |
-| Linux/amd64 | Image architecture and OS inspected. The exact starter image digest is preserved. |
-| Runtime: 2 cores, 4 GB, 256 processes | Actual cgroup values inspected: CPU `200000 100000`, memory 4,294,967,296 bytes, pids 256. |
-| Nobody, HOME=/tmp | Actual UID/GID 65534 and HOME `/tmp` inspected. |
-| No network | `--network none`; actual container has only loopback. Runtime contains no network calls. |
-| Read-only disk, initially empty 64 MB /tmp | Root read-only flag, empty `/tmp`, and 67,108,864-byte tmpfs verified inside container. Bytecode writes disabled. |
-| Runtime wall limits | Largest measured sample wall time 3.14 s versus 180 s. A 45-commit capacity check took 3.44 s versus the final 270 s allowance. |
-| Failures include errors, import errors and subtests | Baseline recorder and mutation harness preserve error/subtest outcomes; import-failure and serialization regressions tested. |
-| Comments are not automatically harmless | Whole-file AST comparisons, source readers and uncertain tests are retained; every file in mixed patches is examined. SQL fixture comments are treated as data. |
-| Three-run median and final five-run median | Both measured locally; integer-microsecond half-up rounding tested. Ties/earlier submission ordering are platform behavior, not controlled by this repository. |
+Independent review found and fixed cross-test cache contamination and reflected
+equality counterexamples before enabling comparison pruning. It also fixed the
+recorder's handling of unsupported replay so instrumentation cannot replace the
+original comparison result with a recorder exception.
 
-The 45-commit capacity check repeats sample patches under new IDs. It measures
-batch capacity, **not** correctness on unseen final patches.
+## Correctness evidence
 
-## Correctness fixes and optimization
+All **174 regression tests pass** in the pinned Python 3.13 Docker image. The
+original full baseline and new instrumented baseline each passed 1,620 tests and
+25,440 subtests, with one expected SQLite skip. New preparation checks verify all
+source Git blobs and the exact baseline node-ID list.
 
-The review found concrete failures beyond the original samples: cached dispatch
-initialization could affect later tests without executing its producer again;
-class fields could be read without construction; `__slots__` changes could fail
-imports in built-in class machinery; and decorators could observe unexecuted
-function code. Added safeguards cover those cases and newly introduced shared
-state. Recursive and aliased mutation analysis has dedicated regressions.
+| Independent validation | Mutations | Mutant test executions | Observed failures | Omitted |
+| --- | ---: | ---: | ---: | ---: |
+| Original adversarial subset, rerun | 15 | 270 | 53 | 0 |
+| Structural and lambda cases | 4 | 3,898 | 622 | 0 |
+| Closure capture cases, full suite | 2 | 3,240 | 1 | 0 |
+| Comparison equivalence and changed-behavior cases | 10 | 140 | 4 | 0 |
 
-Optimization narrows stable statements and eligible direct dispatch lambdas
-using baseline coverage. It preserves broad fallbacks for changed bindings,
-comprehensions, new control flow, import execution, persistent state and uncertain
-cases. This reduced simulated sample time by **40.266 seconds** from the prior
-328.955-second result while retaining every known failure.
+Choices were frozen before mutant execution. Raw mutant patches and failure
+lists stay outside the submission repository and runtime. Aggregate reports are
+linked below. The 38 executed tests actually pruned in the comparison validation
+all passed. These tests do not establish universal hidden-set soundness; unknown
+reflection, cross-module state and environment behavior remain heuristic limits.
 
-All **97 regression tests pass in the pinned Docker environment**. Independent
-validation executed 15 deterministic mutations outside sample-edited lines,
-using 18 predetermined tests per mutation and freezing decisions before running
-the mutations. Thirteen mutations produced 53 failure observations; none was
-omitted. Final selections were rechecked against those observations after the
-last conservative changes. Only aggregate results are published; no generated
-mutation-to-failure lookup is present in the runtime or dependency map.
+## Submission and resource rules
 
-This remains a baseline dependency heuristic. The fixed-subset mutation checks
-and sample success do not prove correctness for every possible hidden patch,
-particularly arbitrary reflection, cross-module state or untraced native code.
-
-## Platform and administrative conditions
-
-The repository can establish code provenance, public visibility, retained
-commits and technical compliance. It cannot establish whether a person has
-another team, outside code-sharing history, the event's submission quota,
-official chosen commit, cutoff enforcement or future public availability.
-The user must submit the reported GitHub URL and commit on the contest platform,
-observe its quota and team rules, and keep submitted commits public through
-publication of results. No leaderboard ranking or prize claim is made.
+- Root Dockerfile uses the starter's exact pinned Linux/amd64 Python image and
+  copies committed files. Build downloads are only the permitted Docker Hub base.
+- A fresh isolated BuildKit worker had its actual 4-core/8-GiB settings inspected.
+  The no-cache build completed in **14.203 seconds**, below the 600-second limit.
+- Operand-map preparation took **647.631 seconds offline**. It is not part of
+  the submission build; the generated map is committed and copied into the image.
+- Runtime limits were inspected: 2 CPU cores, 4 GiB, 256 processes, UID/GID 65534,
+  HOME `/tmp`, read-only root, initially empty 64-MiB tmpfs, only loopback networking.
+- Sample peak RSS was 277.88 MiB. The 45-commit capacity check took
+  6.515 seconds and 283.93 MiB,
+  below the final 270-second/4-GiB limits. That batch repeats samples and measures
+  capacity only, not correctness on unseen final data.
+- Output is valid UTF-8 JSONL, one line per commit, no duplicate/unknown tests,
+  at most eight occupied workers and 16,711 bytes on the samples,
+  below 2 MB. Logs go to stderr. Unknown patches/maps retain a safe broad fallback.
+- Runtime contents were inspected: no sample answers, samples, mutant labels,
+  network calls or patch fingerprints. Maps contain only pinned-baseline source,
+  coverage, imports/readers, class dependencies and raw operand observations.
+  Current test numbers are joined through node IDs, not hardcoded.
+- The public repository keeps prior submitted commits. Its final recorded size
+  is below 20 MB and it uses neither gitlinks nor Git LFS. Administrative team
+  membership, submission quotas and final chosen commit remain platform state.
 
 ## Evidence
 
-- [Three-run scoring report](sample-validation.json)
-- [Five-run scoring report](sample-validation-five-runs.json)
-- [Actual runtime and build limits](runtime-audit.json)
-- [Baseline map provenance](baseline-validation.json)
-- [Independent mutation aggregate](heldout-summary.json)
-- [45-commit capacity check](capacity-validation.json)
+- [Three runs](sample-validation.json) and [five runs](sample-validation-five-runs.json)
+- [Runtime/build inspection](runtime-audit.json) and [capacity](capacity-validation.json)
+- [Baseline provenance](baseline-validation.json)
+- [Adversarial subset](heldout-summary.json)
+- [Precision mutations](precision-validation-summary.json)
+- [Factory mutations](factory-validation-summary.json)
+- [Comparison mutations](comparison-validation-summary.json)

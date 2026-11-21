@@ -6,11 +6,9 @@
   "mutations_with_failures": 13,
   "missed_mutations": 0,
   "failure_observations": 53,
-  "final_candidate_rechecked": true,
-  "recheck_scope": "Every observed failing test belongs to final selection; initial full selected sets were not retained, so counts alone are not claimed as a set-superset proof",
-  "final_map_sha256": "471394eb82d276e4e8acd04d86a9b8bc3efe81747624fe8b42094bb1870aca5c",
   "fixed_test_subset_size": 18,
   "mutant_test_executions": 270,
   "observed_failures_omitted": 0,
-  "raw_failure_lists_in_runtime": false
+  "raw_failure_lists_in_runtime": false,
+  "map_sha256": "0d5f031767c938fac2ea656ca6b5bc2d2683c9a25b29f35ef4cf12641b2007e9"
 }

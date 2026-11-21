@@ -38,8 +38,8 @@ def _own_nodes(function):
         pending.extend(ast.iter_child_nodes(node))
 
 
-def unsafe_functions(source: str) -> set[tuple[int, int]]:
-    tree = ast.parse(source)
+def unsafe_functions(source: str | ast.Module) -> set[tuple[int, int]]:
+    tree = source if isinstance(source, ast.Module) else ast.parse(source)
     functions = []
     classes = set()
     module_names = set()

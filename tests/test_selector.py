@@ -56,6 +56,41 @@ def mapping(files, **extra):
 
 
 class TestSelectionEngine(unittest.TestCase):
+    def comparison_engine(self, *, reads=(), reflection=(), incomplete=(), complete=True):
+        source = "def value(x):\n    return x is None\n"
+        profile = {"version": 1, "commit": "eb11aec4be8cb2122afe713a4816662c3f0fb2fa",
+                   "tests": IDS, "incomplete": list(incomplete), "metadata": {"complete": complete},
+                   "files": {"sqlglot/example.py": {"2:11": {"operator": "Is",
+                       "values": [[["none"], ["none"], True]], "tests": {"0": [0], "1": [0]}}}}}
+        return source, self.engine({"sqlglot/example.py": file_data(source, {2: [0, 1]}, reads=reads)},
+                                  comparison_profile=profile, attribute_readers={"__code__": list(reflection)})
+
+    def test_comparison_equivalence_preserves_file_and_metadata_readers(self):
+        source, engine = self.comparison_engine(reads=[0], reflection=[1])
+        self.assertEqual(engine.select(patch("sqlglot/example.py", source, source.replace("is None", "== None"))), {0, 1})
+
+    def test_comparison_equivalence_removes_only_proven_complete_tests(self):
+        source, engine = self.comparison_engine(incomplete=[IDS[1]])
+        self.assertEqual(engine.select(patch("sqlglot/example.py", source, source.replace("is None", "== None"))), {0, 1})
+
+    def test_incomplete_comparison_map_never_prunes(self):
+        source, engine = self.comparison_engine(complete=False)
+        self.assertEqual(engine.select(patch("sqlglot/example.py", source, source.replace("is None", "== None"))), {0, 1})
+
+    def test_comparison_proof_does_not_cross_another_edited_file(self):
+        source, engine = self.comparison_engine()
+        other = "def other():\n    return 1\n"
+        engine.files["sqlglot/other.py"] = file_data(other, {2: [0]})
+        change = patch("sqlglot/example.py", source, source.replace("is None", "== None"))
+        change += patch("sqlglot/other.py", other, other.replace("return 1", "return 2"))
+        self.assertEqual(engine.select(change), {0, 1})
+
+    def test_function_metadata_readers_do_not_need_to_call_changed_body(self):
+        before = "def value():\n    return 7\n"
+        engine = self.engine({"sqlglot/example.py": file_data(before, {2: [0]})},
+                             attribute_readers={"__code__": [1]})
+        self.assertEqual(engine.select(patch("sqlglot/example.py", before, before.replace("7", "8"))), {0, 1})
+
     def test_invalid_map_root_falls_back_to_all_tests(self):
         self.assertEqual(SelectionEngine([], TESTS).select("anything"), {0, 1, 2})
 
@@ -67,6 +102,12 @@ class TestSelectionEngine(unittest.TestCase):
         after = "# Explain why this value is needed.\ndef value():\n    # Used by the caller.\n    return 7  # Seven\n"
         engine = self.engine({"sqlglot/example.py": file_data(before, {2: [0, 1]}, [0, 1])})
         self.assertEqual(engine.select(patch("sqlglot/example.py", before, after)), set())
+
+    def test_changed_docstring_preserves_readers_without_function_calls(self):
+        before = 'def value():\n    """old documentation"""\n    return 7\n'
+        after = before.replace("old documentation", "new documentation")
+        engine = self.engine({"sqlglot/example.py": file_data(before, {3: [0]}, [0, 1])})
+        self.assertEqual(engine.select(patch("sqlglot/example.py", before, after)), {0, 1, 2})
 
     def test_comment_in_one_file_does_not_hide_fixture_change(self):
         python = "def value():\n    return 7\n"

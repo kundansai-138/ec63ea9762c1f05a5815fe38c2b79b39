@@ -1,0 +1,15 @@
+{
+  "scope": "Independent correctness validation; not an official hidden-set score",
+  "method": "Four independent mutations of the pinned baseline, excluding sample-edited locations. All selections frozen before mutant execution. For every mutation, execute every test selected by the previous precision logic plus a fixed unrelated 19-test subset.",
+  "baseline_test_count": 1620,
+  "baseline_exit_code": 0,
+  "mutations": 4,
+  "mutant_test_executions": 3898,
+  "mutations_with_observed_failures": 4,
+  "observed_failing_test_occurrences": 622,
+  "observed_failures_omitted": 0,
+  "missed_mutations": 0,
+  "real_process_execution": "Native ProcessPoolExecutor retained. Offline validation initially used a 2-core quota, increased to 4 cores; later children capped process pools at 2 workers. Contest selector benchmarks use separate unchanged 2-core limits.",
+  "final_candidate_rechecked": true,
+  "limitations": "The fixed suite and generated mutations do not prove safety for arbitrary hidden changes. Raw mutant-to-failure observations remain outside the submission repository."
+}

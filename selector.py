@@ -15,9 +15,12 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from scheduling import schedule
+from ast_equal import ast_equal
 from attribute_dependencies import build_attribute_readers
 from dependency_safety import unsafe_functions
 from selection_precision import function_lines, lambda_intervals
+from factory_dependencies import factory_intervals
+from baseline_comparisons import changed_comparison, ordinary_function_site, unchanged_tests
 
 PINNED_COMMIT = "eb11aec4be8cb2122afe713a4816662c3f0fb2fa"
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
@@ -162,6 +165,15 @@ class SelectionEngine:
         self.trees = {}
         self.attribute_readers = mapping.get("attribute_readers")
         self.unsafe = {}
+        profile = mapping.get("comparison_profile", {})
+        self.comparisons = (profile if isinstance(profile, dict)
+                            and profile.get("version") == 1
+                            and profile.get("commit") == PINNED_COMMIT
+                            and profile.get("tests") == mapping.get("tests")
+                            and profile.get("metadata", {}).get("complete") is True else {})
+        self.comparison_incomplete = {i for i, node in enumerate(mapping.get("tests", []))
+                                     if node in self.comparisons.get("incomplete", [])}
+        self.reflection_readers = None
 
     def _numbers(self, indices) -> set[int]:
         return {self.by_index[i] for i in indices if i in self.by_index}
@@ -176,14 +188,28 @@ class SelectionEngine:
             return self._numbers(self.mapping["classes"][key])
         return self._numbers(file.get("consumers", [])) or self.all_tests
 
+    def _reflection(self) -> set[int]:
+        if self.reflection_readers is None:
+            if self.attribute_readers is None:
+                self.attribute_readers = build_attribute_readers(self.files)
+            self.reflection_readers = self._numbers(
+                index for name in ("__code__", "co_consts", "__closure__", "__defaults__", "__kwdefaults__", "__doc__")
+                for index in self.attribute_readers.get(name, []))
+        return self.reflection_readers
+
     def _python(self, edit: Edit) -> set[int]:
+        self.comparison_eligible = False
         file = self.files[edit.path]
         if edit.path not in self.trees:
             self.trees[edit.path] = _ast(file["source"])
         old, new = self.trees[edit.path], _ast(edit.source)
         selected = self._numbers(file.get("reads", []))
-        if ast.dump(old, include_attributes=False) == ast.dump(new, include_attributes=False):
+        if ast_equal(old, new):
             return selected
+        # Function metadata can be inspected without entering a function body.
+        # Retain every baseline reader of those reflective fields on semantic
+        # Python changes, including readers reached through aliases.
+        selected.update(self._reflection())
         if edit.path.startswith("tests/"):
             return self.all_tests
         if edit.path not in self.unsafe:
@@ -193,9 +219,11 @@ class SelectionEngine:
                 self.unsafe[edit.path] = unsafe_functions(file["source"])
         # Patches can introduce shared-state effects even when the baseline was
         # pure; callers of the changed function are then not the only consumers.
-        new_unsafe = unsafe_functions(edit.source)
+        new_unsafe = unsafe_functions(new)
 
         def ordinary_decorators(function):
+            if not function.decorator_list:
+                return True
             names = {d.id for d in function.decorator_list if isinstance(d, ast.Name)}
             if len(names) != len(function.decorator_list) or not names <= {"property", "staticmethod", "classmethod"}:
                 return False
@@ -210,21 +238,22 @@ class SelectionEngine:
                     return False
             return True
         def header(node):
-            import copy
-            node = copy.copy(node)
-            node.body = []
-            return ast.dump(node, include_attributes=False)
+            return [getattr(node, name, None) for name in node._fields if name != "body"]
 
         def compare_body(before, after, prefix=""):
             if len(before) != len(after):
                 return False
             for left, right in zip(before, after):
-                if ast.dump(left, include_attributes=False) == ast.dump(right, include_attributes=False):
+                if ast_equal(left, right):
                     continue
                 if type(left) is not type(right):
                     return False
                 if isinstance(left, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    if header(left) != header(right):
+                    if not ast_equal(header(left), header(right)):
+                        return False
+                    # A docstring is stored on the function, not executed as a
+                    # statement. Its readers need not call the function at all.
+                    if ast.get_docstring(left, clean=False) != ast.get_docstring(right, clean=False):
                         return False
                     if not ordinary_decorators(left):
                         return False
@@ -257,15 +286,33 @@ class SelectionEngine:
                     for start, end in intervals:
                         selected.update(self._lines(file, start, end))
                 elif isinstance(left, ast.ClassDef):
-                    if header(left) != header(right):
+                    if not ast_equal(header(left), header(right)):
                         return False
                     if not compare_body(left.body, right.body, prefix + left.name + "."):
                         return False
                 elif isinstance(left, (ast.Assign, ast.AnnAssign)):
-                    intervals = lambda_intervals(left, right, file["source"], file.get("collection_lines", []))
+                    collection_calls = (file.get("collection_callable_lines")
+                                        if self.mapping.get("callable_collection_version") == 1 else None)
+                    unsafe_names = {node.name for node in ast.walk(old)
+                                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                                    and any(start <= node.end_lineno and end >= node.lineno
+                                            for start, end in self.unsafe[edit.path])}
+                    intervals = lambda_intervals(left, right, file["source"], file.get("collection_lines", []),
+                                                 collection_calls, unsafe_names)
                     if intervals:
                         for start, end in intervals:
                             selected.update(self._lines(file, start, end))
+                        continue
+                    factory_dependencies = factory_intervals(left, right, edit.path, self.files)
+                    if factory_dependencies:
+                        for dependency_path, start, end in factory_dependencies:
+                            selected.update(self._lines(self.files[dependency_path], start, end))
+                        selected.update(self._class_selection(edit.path, prefix.rstrip("."), file))
+                        if self.attribute_readers is None:
+                            self.attribute_readers = build_attribute_readers(self.files)
+                        targets = left.targets if isinstance(left, ast.Assign) else [left.target]
+                        for target in targets:
+                            selected.update(self._numbers(self.attribute_readers.get(target.id, [])))
                         continue
                     if not prefix:
                         return False
@@ -279,9 +326,9 @@ class SelectionEngine:
                     # Same-shaped __slots__ edits can make the module unimportable.
                     if any(n.id.startswith("__") and n.id.endswith("__") for n in left_target):
                         return False
-                    if isinstance(left, ast.AnnAssign) and ast.dump(left.annotation) != ast.dump(right.annotation):
+                    if isinstance(left, ast.AnnAssign) and not ast_equal(left.annotation, right.annotation):
                         return False
-                    if ([ast.dump(n) for n in left_target] != [ast.dump(n) for n in right_target]
+                    if (not ast_equal(left_target, right_target)
                             or not _literal_tree(left.value) or not _literal_tree(right.value)):
                         return False
                     if _literal_shape(left.value) != _literal_shape(right.value):
@@ -301,6 +348,7 @@ class SelectionEngine:
 
         if not compare_body(old.body, new.body):
             return self.all_tests
+        self.comparison_eligible = True
         return selected
 
     def select(self, patch: str) -> set[int]:
@@ -315,6 +363,20 @@ class SelectionEngine:
                 else:
                     readers = self._numbers(self.files[edit.path].get("reads", []))
                     selected.update(readers or self.all_tests)
+            # Raw baseline operands can establish equivalence for a single
+            # pure comparison operator substitution. Never combine that proof
+            # with other edited files, unknown observations, or source readers.
+            if (len(edits) == 1 and self.comparisons and edits[0].path.endswith(".py")
+                    and self.comparison_eligible and not self.uncertain):
+                edit = edits[0]
+                file = self.files[edit.path]
+                old, new = self.trees[edit.path], _ast(edit.source)
+                change = changed_comparison(old, new)
+                if change and ordinary_function_site(old, change[0]):
+                    proven = unchanged_tests(old, new, self.comparisons.get("files", {}).get(edit.path, {}),
+                                             self.comparison_incomplete)
+                    protected = self.uncertain | self._numbers(file.get("reads", [])) | self._reflection()
+                    selected.difference_update(self._numbers(proven) - protected)
             return selected
         except (UncertainPatch, SyntaxError, ValueError, TypeError, KeyError, AttributeError, IndexError, RuntimeError, RecursionError):
             return set(self.all_tests)

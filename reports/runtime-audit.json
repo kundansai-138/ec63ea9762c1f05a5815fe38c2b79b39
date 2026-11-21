@@ -13,39 +13,61 @@
   "pids_max": 256,
   "answers_available": false,
   "app_files": [
+    "ast_equal.py",
     "attribute_dependencies.py",
+    "baseline_comparisons.py",
     "coverage-map.json.gz",
     "dependency_safety.py",
+    "factory_dependencies.py",
     "scheduling.py",
     "selection_precision.py",
     "selector.py"
   ],
-  "builder_limits": {
-    "Memory": 8589934592,
-    "CpuQuota": 400000,
-    "CpuPeriod": 100000
-  },
   "build": {
     "exit_code": 0,
-    "wall_seconds": 4.1790935000171885,
+    "wall_seconds": 14.203000000095926,
     "no_cache": true,
-    "builder": "blast-radius-audit-20261121",
+    "fresh_builder": true,
+    "builder": "blast-radius-opt-final",
     "limits": {
       "cpus": 4,
       "memory_bytes": 8589934592,
       "timeout_seconds": 600
     },
-    "cold_builder_initial_wall_seconds": 32.55885010003112
+    "verified_host_config": {
+      "Memory": 8589934592,
+      "CpuQuota": 400000,
+      "CpuPeriod": 100000
+    }
+  },
+  "builder_limits": {
+    "Memory": 8589934592,
+    "CpuQuota": 400000,
+    "CpuPeriod": 100000
   },
   "image": {
-    "Id": "sha256:b2de514296aa672065f07864d92971ffa03b1e841d0370953f4063ba5b245ec1",
+    "Id": "sha256:d08a2d5b34632e273d1a575c9d7cf63ae603abdd1514371a93c237604003d6c6",
     "Architecture": "amd64",
     "Os": "linux"
   },
   "repository": {
-    "tracked_bytes_before_final_report_update": 3624479,
-    "all_git_object_uncompressed_bytes_before_final_report_update": 6402092,
-    "gitlinks": 0,
-    "git_lfs_used": false
+    "tracked_working_tree_bytes": 4540088,
+    "retained_git_object_bytes": 10572236,
+    "conservative_sum_bytes": 15112324,
+    "limit_bytes": 20000000,
+    "new_files_included": true,
+    "gitlinks": false,
+    "lfs_pointers": false
+  },
+  "runtime_file_sha256": {
+    "ast_equal.py": "54bf601507b049d0011ba2578271430fce4746dbf3bc6d139c835b8a1e8552e9",
+    "attribute_dependencies.py": "285496d1c8db085560c7c621c028a3e0a699818c7965a8410a2c442189bbabc9",
+    "baseline_comparisons.py": "da889c8e6b09f41d27e4ee38572c8efb3d25d0b626d371cf40b396f19cda42f9",
+    "coverage-map.json.gz": "0d5f031767c938fac2ea656ca6b5bc2d2683c9a25b29f35ef4cf12641b2007e9",
+    "dependency_safety.py": "9dcc1b875720cbc34257fa22bc8b526f2e4abc11f96d49b601d8061e6d4e7207",
+    "factory_dependencies.py": "5593abd97cf16969b03735034277ea8658555bd64611bfeb3b9eb1b5753ce5fa",
+    "scheduling.py": "d3db4c46d30fb50308fc9e1bb626fc22c02a491a219979726f1660c3091bb45e",
+    "selection_precision.py": "a6d36fdde7c8e037c915db05057e0a6411a34c3e136a9ebd58f212a4b06fc954",
+    "selector.py": "80643c262a462aa659a4d1a537898c85b7dbfae3e35258ff2c71f91213d03e6f"
   }
 }

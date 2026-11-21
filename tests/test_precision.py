@@ -37,6 +37,65 @@ class StatementPrecisionTests(unittest.TestCase):
         after = "def f(x):\n    x += 1\n    return x\n"
         self.assertIsNone(function_lines(function(before), function(after)))
 
+    def test_insertion_inside_branch_retains_unchanged_compound_boundary(self):
+        before = "def f(x):\n    if x:\n        if x > 1:\n            return 1\n    return 2\n"
+        after = before.replace("            return 1", "            print(x)\n            return 1")
+        self.assertEqual(function_lines(function(before), function(after)), [(3, 4)])
+
+    def test_deletion_inside_branch_retains_unchanged_compound_boundary(self):
+        before = "def f(x):\n    if x:\n        print(x)\n        return 1\n    return 2\n"
+        after = before.replace("        print(x)\n", "")
+        self.assertEqual(function_lines(function(before), function(after)), [(2, 4)])
+
+    def test_new_else_suite_includes_control_header(self):
+        before = "def f(x):\n    if x:\n        return 1\n    return 2\n"
+        after = before.replace("    return 2", "    else:\n        raise ValueError(x)\n    return 2")
+        self.assertEqual(function_lines(function(before), function(after)), [(2, 3)])
+
+    def test_statement_kind_change_inside_branch_includes_header(self):
+        before = "def f(x):\n    if x:\n        return x\n    return 2\n"
+        after = before.replace("        return x", "        raise ValueError(x)")
+        self.assertEqual(function_lines(function(before), function(after)), [(2, 3)])
+
+    def test_inserted_binding_retains_function_boundary_even_inside_branch(self):
+        before = "def f(x):\n    if x:\n        return 1\n    return 2\n"
+        after = before.replace("        return 1", "        y = x\n        return 1")
+        self.assertIsNone(function_lines(function(before), function(after)))
+
+    def test_nested_insertion_covers_changed_executions_and_excludes_early_returns(self):
+        before = "def f(x):\n    if x < 0:\n        return x\n    if x:\n        if x > 1:\n            return 1\n    return 2\n"
+        after = before.replace("            return 1", "            raise ValueError(x)\n            return 1")
+        intervals = function_lines(function(before), function(after))
+        functions = []
+        for source in (before, after):
+            namespace = {}
+            exec(compile(source, "<precision-execution>", "exec"), namespace)
+            functions.append(namespace["f"])
+        selected, changed = set(), set()
+        for argument in (-1, 0, 1, 2):
+            lines = set()
+            def trace(frame, event, _argument):
+                if frame.f_code is functions[0].__code__ and event == "line":
+                    lines.add(frame.f_lineno)
+                return trace
+            previous = sys.gettrace()
+            sys.settrace(trace)
+            try:
+                original = functions[0](argument)
+            finally:
+                sys.settrace(previous)
+            try:
+                modified = functions[1](argument)
+            except ValueError:
+                modified = object()
+            if original != modified:
+                changed.add(argument)
+            if any(start <= line <= end for start, end in intervals for line in lines):
+                selected.add(argument)
+        self.assertTrue(changed <= selected)
+        self.assertEqual(changed, {2})
+        self.assertTrue({-1, 0}.isdisjoint(selected))
+
     def test_changed_binding_can_affect_earlier_unexecuted_statement(self):
         before = "def f(x):\n    print(y)\n    if x:\n        z = 1\n"
         after = before.replace("z = 1", "y = 1")
@@ -94,6 +153,46 @@ class LambdaPrecisionTests(unittest.TestCase):
     def test_single_line_lambda_is_ambiguous_with_collection(self):
         before = "TABLE = {'x': lambda x: x + 1}\n"
         self.assertIsNone(self.intervals(before, before.replace("+ 1", "+ 2"), (1,)))
+
+    def test_single_line_lambda_can_use_exact_collection_call_evidence(self):
+        before = "TABLE = {'x': lambda x: x + 1}\n"
+        after = before.replace("+ 1", "+ 2")
+        self.assertEqual(lambda_intervals(assignment(before), assignment(after), before, (1,), []), [(1, 1)])
+
+    def test_exact_collection_lambda_call_prevents_refinement(self):
+        before = "TABLE = {'x': lambda x: x + 1}\n"
+        after = before.replace("+ 1", "+ 2")
+        self.assertIsNone(lambda_intervals(assignment(before), assignment(after), before, (1,), [1]))
+
+    def test_two_lambdas_on_same_line_remain_ambiguous(self):
+        before = "TABLE = {'x': lambda x: x + 1, 'y': lambda x: x + 2}\n"
+        after = before.replace("+ 1", "+ 3")
+        self.assertIsNone(lambda_intervals(assignment(before), assignment(after), before, (1,), []))
+
+    def test_new_shared_state_calls_are_not_refined(self):
+        before = "TABLE = {'x': lambda x: x + 1}\n"
+        after = before.replace("x + 1", "globals().update({'changed': x})")
+        self.assertIsNone(lambda_intervals(assignment(before), assignment(after), before, (1,), []))
+
+    def test_existing_mutator_calls_are_not_refined(self):
+        before = "TABLE = {'x': lambda x: CACHE.update({'key': 1})}\n"
+        after = before.replace("'key': 1", "'key': 2")
+        self.assertIsNone(lambda_intervals(assignment(before), assignment(after), before, (1,), []))
+
+    def test_changed_call_target_is_not_refined(self):
+        before = "TABLE = {'x': lambda x: parse(x)}\n"
+        after = before.replace("parse(x)", "cache(x)")
+        self.assertIsNone(lambda_intervals(assignment(before), assignment(after), before, (1,), []))
+
+    def test_known_persistent_callee_is_not_refined(self):
+        before = "TABLE = {'x': lambda x: build_cache(x + 1)}\n"
+        after = before.replace("x + 1", "x + 2")
+        self.assertIsNone(lambda_intervals(assignment(before), assignment(after), before, (1,), [], {"build_cache"}))
+
+    def test_nested_callable_factory_is_not_refined(self):
+        before = "TABLE = {'x': lambda x: (lambda y: x + y + 1)}\n"
+        after = before.replace("y + 1", "y + 2")
+        self.assertIsNone(lambda_intervals(assignment(before), assignment(after), before, (1,), []))
 
     def test_observed_import_time_body_execution_is_conservative(self):
         self.assertIsNone(self.intervals(self.SOURCE, self.SOURCE.replace("args[0]", "args[1]"), (1, 2, 3, 4)))
