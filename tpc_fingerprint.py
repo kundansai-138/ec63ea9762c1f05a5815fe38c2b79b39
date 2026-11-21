@@ -53,7 +53,9 @@ def eligible(paths) -> bool:
     return bool(paths) and not any(path.startswith(PROTECTED_PREFIXES) for path in paths)
 
 
-def _fingerprints(tree: str) -> dict[str, str]:
+def _fingerprints(tree: str, expected: dict | None = None, only=None) -> dict:
+    """expected: the pinned commit's per-query parts, to stop early on a difference.
+    only: the test ids to fingerprint (all when None)."""
     os.chdir(tree)
     sys.path.insert(0, tree)
     os.environ["SKIP_INTEGRATION"] = "0"
@@ -132,45 +134,72 @@ def _fingerprints(tree: str) -> dict[str, str]:
                 described.append(json.dumps(["subquery", name, describe_plan(subplan, executor, seen)]))
         return sorted(described)
 
-    def execute_digest(fixture: str, schema: dict) -> str:
-        digest = hashlib.sha256(runtime.encode())
+    class _Differs(Exception):
+        pass
+
+    def checked(parts: list, key: str) -> None:
+        # Stop at the first part that differs from the pinned commit's.
+        if expected is None:
+            return
+        known = expected.get(TESTS[key])
+        index = len(parts) - 1
+        if not isinstance(known, list) or index >= len(known) or known[index] != parts[index]:
+            raise _Differs()
+
+    def execute_digest(key: str, fixture: str, schema: dict) -> list:
+        parts = []
         resolved = ensure_schema(schema)
-        digest.update(repr(resolved.supported_table_args).encode())
+        parts.append(hashlib.sha256((runtime + repr(resolved.supported_table_args)).encode()).hexdigest())
+        checked(parts, key)
         for meta, sql, _ in load_sql_fixture_pairs(fixture):
+            digest = hashlib.sha256()
             parsed = parse_one(sql)
             moved = pickle.loads(pickle.dumps(parsed))
             digest.update(repr(parsed).encode())
             digest.update(repr(moved).encode())
             digest.update(transpile(sql, write="duckdb")[0].encode())
             digest.update(repr(sorted(meta.items())).encode())
-            if not meta.get("execute"):
-                continue
-            optimized = optimize(moved, ensure_schema(schema), leave_tables_isolated=True)
-            digest.update(repr(optimized).encode())
-            plan = planner.Plan(optimized)
-            executor = PythonExecutor(tables={})
-            for line in describe_plan(plan, executor, set()):
-                digest.update(line.encode())
-        return digest.hexdigest()
+            if meta.get("execute"):
+                optimized = optimize(moved, ensure_schema(schema), leave_tables_isolated=True)
+                digest.update(repr(optimized).encode())
+                plan = planner.Plan(optimized)
+                executor = PythonExecutor(tables={})
+                for line in describe_plan(plan, executor, set()):
+                    digest.update(line.encode())
+            parts.append(digest.hexdigest())
+            checked(parts, key)
+        return parts
 
-    def optimized_digest(fixture: str) -> str:
-        digest = hashlib.sha256()
+    def optimized_digest(key: str, fixture: str) -> list:
+        parts = []
         for _, sql, optimized in load_sql_fixture_pairs(fixture):
+            digest = hashlib.sha256()
             digest.update(transpile(sql, write="duckdb")[0].encode())
             digest.update(transpile(optimized, write="duckdb")[0].encode())
-        return digest.hexdigest()
+            parts.append(digest.hexdigest())
+            checked(parts, key)
+        return parts
 
-    result = {}
-    for key, fixture, schema in (("tpcds", "optimizer/tpc-ds/tpc-ds.sql", TPCDS_SCHEMA),
-                                 ("tpch", "optimizer/tpc-h/tpc-h.sql", TPCH_SCHEMA)):
+    result: dict = {"_parts": {}}
+    work = (("tpcds", lambda: execute_digest("tpcds", "optimizer/tpc-ds/tpc-ds.sql", TPCDS_SCHEMA)),
+            ("tpch", lambda: execute_digest("tpch", "optimizer/tpc-h/tpc-h.sql", TPCH_SCHEMA)),
+            ("optimized_tpch", lambda: optimized_digest("optimized_tpch", "optimizer/tpc-h/tpc-h.sql")))
+    for key, compute in work:
+        if only is not None and TESTS[key] not in only:
+            continue
         try:
-            result[TESTS[key]] = execute_digest(fixture, schema)
+            parts = compute()
+        except _Differs:
+            result[TESTS[key]] = "error:differs"
+            continue
         except Exception as error:  # noqa: BLE001 - differs from the baseline hash
             result[TESTS[key]] = "error:" + type(error).__name__
-    try:
-        result[TESTS["optimized_tpch"]] = optimized_digest("optimizer/tpc-h/tpc-h.sql")
-    except Exception as error:  # noqa: BLE001
-        result[TESTS["optimized_tpch"]] = "error:" + type(error).__name__
+            continue
+        if expected is not None and len(parts) != len(expected.get(TESTS[key]) or ()):
+            result[TESTS[key]] = "error:differs"
+            continue
+        result[TESTS[key]] = hashlib.sha256("".join(parts).encode()).hexdigest()
+        result["_parts"][TESTS[key]] = parts
     return result
 
 
@@ -184,11 +213,11 @@ def main() -> None:
         json.dump(result, handle, sort_keys=True)
 
 
-def run_jobs(source: str, jobs: list[tuple[str, dict[str, bytes]]], work_root: str,
-             deadline: float | None, concurrency: int = 2) -> dict[str, dict[str, str]]:
+def run_jobs(source: str, jobs: list, work_root: str,
+             deadline: float | None, concurrency: int = 2, expected: dict | None = None) -> dict[str, dict]:
     """Fingerprint patched trees in forked children: {key: {test id: hash}}.
 
-    jobs holds (key, replaced files). A child that fails, or is still running
+    jobs holds (key, replaced files, test ids to fingerprint). A child that fails, or is still running
     at the deadline, yields no entry, which keeps every test selected.
     """
     import shutil
@@ -225,7 +254,7 @@ def run_jobs(source: str, jobs: list[tuple[str, dict[str, bytes]]], work_root: s
         while pending or active:
             while (pending and len(active) < concurrency
                    and (deadline is None or time.monotonic() < deadline)):
-                key, replacements = pending.pop(0)
+                key, replacements, only = pending.pop(0)
                 serial += 1
                 tree = os.path.join(work_root, "fp%d" % serial)
                 output = tree + ".json"
@@ -239,7 +268,8 @@ def run_jobs(source: str, jobs: list[tuple[str, dict[str, bytes]]], work_root: s
                         os.dup2(sink, 1)
                         os.dup2(sink, 2)
                         runner.build_tree(source, tree, replacements)
-                        hashes = _fingerprints(tree)
+                        hashes = _fingerprints(tree, expected, only)
+                        hashes.pop("_parts", None)
                         with open(output + ".tmp", "w", encoding="utf-8") as handle:
                             json.dump(hashes, handle, sort_keys=True)
                         os.rename(output + ".tmp", output)

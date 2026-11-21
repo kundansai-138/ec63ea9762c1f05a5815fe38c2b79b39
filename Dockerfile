@@ -21,10 +21,12 @@ COPY tpc_fingerprint.py runner.py /app/
 # Fingerprint of what the TPC executor tests compute on the pinned commit.
 # Its own check that the result has no "error" values keeps a broken build visible.
 RUN cd /tmp && python /app/tpc_fingerprint.py /opt/sqlglot /app/tpc-fingerprint.json \
-    && python -c "import json,sys; d=json.load(open('/app/tpc-fingerprint.json')); sys.exit(any(v.startswith('error') for v in d.values()))" \
+    && python -c "import json,sys; d=json.load(open('/app/tpc-fingerprint.json')); sys.exit(len(d['_parts']) != 3 or any(isinstance(v, str) and v.startswith('error') for v in d.values()))" \
     && chmod 644 /app/tpc-fingerprint.json \
     && find /opt/sqlglot -name __pycache__ -newer /app/tpc_fingerprint.py -prune -exec chmod -R a+rX {} +
 
 COPY selector.py scheduling.py attribute_dependencies.py dependency_safety.py selection_precision.py factory_dependencies.py ast_equal.py baseline_comparisons.py class_dependencies.py tokenizer_dependencies.py verification_plan.py verify.py runner.py isolation.py tpc_fingerprint.py tokenizer-profile.json.gz verify-profile.json isolation-map.json.gz /app/
+# Where each attribute name is read in the pinned sources, for the selector.
+RUN cd /app && python -c "import gzip, json, selector; m = json.load(gzip.open('coverage-map.json.gz', 'rt', encoding='utf-8')); e = selector.SelectionEngine(m, []); n = e._name_index(); json.dump({'commit': selector.PINNED_COMMIT, 'reads': n['reads'], 'strings': sorted(n['strings'])}, open('name-index.json', 'w'))"     && chmod 644 /app/name-index.json && rm -rf /app/__pycache__
 USER 65534:65534
 CMD ["python", "/app/selector.py"]

@@ -200,6 +200,8 @@ class SelectionEngine:
         self.mapping, self.tests = mapping, tests
         # Loaded on first use: most changes never need the isolation map.
         self._isolation_loader = isolation_loader
+        self.name_index_path = None
+        self._names = None
         self._isolation = None
         self.files = mapping.get("files", {})
         self.all_tests = {t["number"] for t in tests}
@@ -240,6 +242,76 @@ class SelectionEngine:
         if importers is None:
             return self.all_tests
         return selected | importers | isolation.always | self.uncertain
+
+    def _attribute_scope(self, name: str, path: str) -> set[int] | None:
+        """Tests that can observe a new literal value of a class attribute.
+
+        A class attribute that nothing reads while classes are created can
+        only matter where code reads it by name: `x.NAME`, or getattr/hasattr
+        with the constant "NAME". Those statements are found in every file,
+        and the isolation map gives the tests whose own process ran them,
+        while importing or later. A test must also import the edited file.
+
+        Returns None (keep the wider rule) when the map is missing, or when
+        "NAME" appears as a string anywhere else, since it could then be read
+        through `__dict__`, `vars()` or a computed getattr.
+        """
+        isolation = self._isolation_map()
+        if isolation is None:
+            return None
+        index = self._name_index()
+        if name in index["strings"]:
+            return None
+        importers = isolation.importers(path)
+        if importers is None:
+            return None
+        readers = set()
+        for file_path, start, end in index["reads"].get(name, ()):
+            readers |= isolation.line_tests(file_path, start, end, "import")
+            readers |= isolation.line_tests(file_path, start, end, "test")
+        return (readers & importers) | isolation.always | self.uncertain
+
+    def _name_index(self) -> dict:
+        """Where each attribute name is read, and every string constant."""
+        if getattr(self, "_names", None) is None and self.name_index_path is not None:
+            # Built from the pinned sources when the image was built.
+            try:
+                with open(self.name_index_path, encoding="utf-8") as handle:
+                    stored = json.load(handle)
+                if stored.get("commit") == PINNED_COMMIT:
+                    self._names = {"reads": stored["reads"], "strings": set(stored["strings"])}
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        if getattr(self, "_names", None) is None:
+            reads: dict[str, list] = {}
+            strings: set[str] = set()
+            for file_path, entry in self.files.items():
+                source = entry.get("source")
+                if not file_path.endswith(".py") or not isinstance(source, str):
+                    continue
+                if not file_path.startswith(("sqlglot/", "tests/")):
+                    continue
+                try:
+                    tree = ast.parse(source)
+                except SyntaxError:
+                    continue
+                for statement in ast.walk(tree):
+                    if not isinstance(statement, ast.stmt):
+                        continue
+                    # This statement's own expressions, not nested statements.
+                    pending = [child for child in ast.iter_child_nodes(statement)
+                               if not isinstance(child, ast.stmt)]
+                    while pending:
+                        inner = pending.pop()
+                        if isinstance(inner, ast.Attribute) and isinstance(inner.ctx, ast.Load):
+                            reads.setdefault(inner.attr, []).append(
+                                (file_path, statement.lineno, statement.end_lineno))
+                        elif isinstance(inner, ast.Constant) and isinstance(inner.value, str):
+                            strings.add(inner.value)
+                        pending.extend(child for child in ast.iter_child_nodes(inner)
+                                       if not isinstance(child, ast.stmt))
+            self._names = {"reads": reads, "strings": strings}
+        return self._names
 
     def _isolation_map(self):
         if self._isolation is None and self._isolation_loader is not None:
@@ -444,6 +516,11 @@ class SelectionEngine:
                         return False
                     if any(n.id in self.mapping.get("collection_attributes", []) for n in left_target):
                         return False
+                    narrowed = [self._attribute_scope(n.id, edit.path) for n in left_target]
+                    if all(scope is not None for scope in narrowed):
+                        for scope in narrowed:
+                            selected.update(scope)
+                        continue
                     selected.update(self._class_selection(edit.path, prefix.rstrip("."), file))
                     if self.attribute_readers is None:
                         self.attribute_readers = build_attribute_readers(self.files)
@@ -551,6 +628,7 @@ def main():
         return IsolationMap(args.isolation, tests)
 
     engine = SelectionEngine(mapping, tests, load_isolation)
+    engine.name_index_path = here / "name-index.json"
     planner = Planner(tests, _load_json(args.profile, False))
     can_verify = (not args.no_verify and hasattr(os, "fork")
                   and os.path.isdir(os.path.join(args.source, "sqlglot"))
@@ -643,10 +721,20 @@ def main():
                     if saving < FINGERPRINT_MIN_SAVING:
                         continue
                     wanted.append((commit, {edit.path: edit.source.encode("utf-8")
-                                            for edit in info["edits"]}))
+                                            for edit in info["edits"]},
+                                   {by_number[n]["id"] for n in hit}))
             if wanted:
+                # The children import these through the test module; loading
+                # them once here is shared by every fork.
+                for module in ("numpy", "pandas", "pandas.testing", "duckdb", "csv", "gzip",
+                               "multiprocessing", "concurrent.futures.process"):
+                    try:
+                        __import__(module)
+                    except Exception:  # noqa: BLE001 - the child meets the same error
+                        pass
                 found = tpc_fingerprint.run_jobs(args.source, wanted, "/tmp/br-fp",
-                                                 started + args.wall_limit)
+                                                 started + args.wall_limit,
+                                                 expected=baseline.get("_parts"))
                 for commit, chosen, _ in decisions:
                     hashes = found.get(commit)
                     if not hashes:

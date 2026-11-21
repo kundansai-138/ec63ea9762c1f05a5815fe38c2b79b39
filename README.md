@@ -29,6 +29,7 @@ scorer's limits (2 CPUs, 4 GB, no network, read-only disk, user `nobody`):
 | Baseline dependencies only (`d7cc934`) | 163.788 | 0 |
 | Tokenizer dependencies (`b584e95`) | 136.239 | 0 |
 | With module scope and candidate runs | 114.824 | 0 |
+| Narrow class-attribute edits to readers | 106.880 | 0 |
 
 The best possible answer for these 30 commits costs 94.4 simulated seconds.
 
@@ -162,6 +163,20 @@ the complete suite. If the only difference is the body of a nested function,
 the nested `def` line itself is not counted, because defining a function does
 not run it.
 
+### Class attribute edits
+
+A literal change to a class attribute that nothing reads while classes are
+created (for example `WEEK_OFFSET = -1` to `-2` in a dialect) can only matter
+where code reads the attribute by name. The selector finds every statement in
+`sqlglot/` and `tests/` that reads `x.NAME` or calls getattr/hasattr with the
+constant "NAME" (`name-index.json`, built from the pinned sources at image
+build). From the isolation map it takes the tests whose own process ran those
+statements and that import the edited file. Previously every test using the
+class was selected, often hundreds. If "NAME" appears as a string anywhere,
+it could be read through `__dict__` or a computed getattr, and the wider rule
+is kept. On 41 synthetic patches this rule changed, nearly the whole suite
+was run on the patched tree and no failing test was left out.
+
 ### Fingerprinting the TPC executor tests
 
 `test_execute_tpcds` (21.5 s) is the most expensive test that patches reach,
@@ -178,7 +193,8 @@ image build computes it for the pinned commit, where the tests pass. A patched
 tree with the same hashes runs the same computation on the same data, so the
 tests are dropped. Patches touching `sqlglot/executor/`, `sqlglot/helper.py` or
 `tests/` (including the fixtures) are never fingerprinted. The check runs only
-when dropping the tests saves at least 6 simulated seconds.
+when dropping the tests saves at least 6 simulated seconds. The baseline stores a
+hash per query, so a child stops at the first query that differs.
 
 Validation: on 800 synthetic patches, the fingerprint matched on every patch
 where the real tests were run afterwards and all of them passed. On the two
