@@ -9,4 +9,5 @@ RUN python -m pip install --no-cache-dir -r /app/requirements.lock coverage==7.1
 COPY build_map.py attribute_dependencies.py dependency_safety.py enrich_map.py /app/
 COPY ast_equal.py baseline_comparisons.py build_callable_map.py build_subprocess_map.py build_comparison_map.py /app/
 COPY class_dependencies.py build_class_map.py /app/
+COPY tokenizer_dependencies.py build_tokenizer_map.py /app/
 CMD ["python", "/app/build_map.py", "--help"]

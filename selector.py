@@ -11,6 +11,7 @@ import json
 import re
 import sys
 import time
+import zlib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -21,6 +22,7 @@ from dependency_safety import unsafe_functions
 from selection_precision import function_lines, lambda_intervals
 from factory_dependencies import factory_intervals
 from class_dependencies import class_attribute_tests
+from tokenizer_dependencies import tokenizer_attribute_tests
 from baseline_comparisons import changed_comparison, ordinary_function_site, unchanged_tests
 
 PINNED_COMMIT = "eb11aec4be8cb2122afe713a4816662c3f0fb2fa"
@@ -204,6 +206,9 @@ class SelectionEngine:
         if edit.path not in self.trees:
             self.trees[edit.path] = _ast(file["source"])
         old, new = self.trees[edit.path], _ast(edit.source)
+        # Reuse these already validated trees for the single-file comparison
+        # refinement; compiling and parsing the same patch again adds CPU cost.
+        self.comparison_trees = old, new
         selected = self._numbers(file.get("reads", []))
         if ast_equal(old, new):
             return selected
@@ -292,6 +297,11 @@ class SelectionEngine:
                     if not compare_body(left.body, right.body, prefix + left.name + "."):
                         return False
                 elif isinstance(left, (ast.Assign, ast.AnnAssign)):
+                    tokenizer_tests = tokenizer_attribute_tests(left, right, edit.path, prefix.rstrip("."), self.mapping)
+                    if tokenizer_tests is not None:
+                        selected.update(self._numbers(tokenizer_tests))
+                        selected.update(self._class_selection(edit.path, prefix.rstrip("."), file))
+                        continue
                     class_tests = class_attribute_tests(left, right, edit.path, prefix.rstrip("."), self.mapping)
                     if class_tests is not None:
                         selected.update(self._numbers(class_tests))
@@ -376,11 +386,11 @@ class SelectionEngine:
                     and self.comparison_eligible and not self.uncertain):
                 edit = edits[0]
                 file = self.files[edit.path]
-                old, new = self.trees[edit.path], _ast(edit.source)
+                old, new = self.comparison_trees
                 change = changed_comparison(old, new)
                 if change and ordinary_function_site(old, change[0]):
                     proven = unchanged_tests(old, new, self.comparisons.get("files", {}).get(edit.path, {}),
-                                             self.comparison_incomplete)
+                                             self.comparison_incomplete, change=change)
                     protected = self.uncertain | self._numbers(file.get("reads", [])) | self._reflection()
                     selected.difference_update(self._numbers(proven) - protected)
             return selected
@@ -392,14 +402,25 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", type=Path, default=Path("/data"))
     parser.add_argument("--map", type=Path, default=Path(__file__).with_name("coverage-map.json.gz"))
+    parser.add_argument("--tokenizer-profile", type=Path,
+                        default=Path(__file__).with_name("tokenizer-profile.json.gz"))
     args = parser.parse_args()
     tests = json.loads((args.data / "tests.json").read_text("utf-8"))["tests"]
     try:
         with gzip.open(args.map, "rt", encoding="utf-8") as handle:
             mapping = json.load(handle)
-    except (OSError, ValueError):
+    except (OSError, ValueError, EOFError, zlib.error):
         mapping = {}
         print("Coverage map unavailable; using the complete suite", file=sys.stderr)
+    # Store supplemental evidence separately to avoid duplicating the large
+    # original map in Git history. The contract checks commit, test IDs and
+    # completeness before any dependency refinement can use this artifact.
+    if isinstance(mapping, dict):
+        try:
+            with gzip.open(args.tokenizer_profile, "rt", encoding="utf-8") as handle:
+                mapping["tokenizer_attribute_profile"] = json.load(handle)
+        except (OSError, ValueError, EOFError, zlib.error):
+            print("Tokenizer profile unavailable; retaining existing fallbacks", file=sys.stderr)
     engine, cache, total = SelectionEngine(mapping, tests), {}, 0
     for patch in sorted((args.data / "commits").glob("*.patch")):
         try:

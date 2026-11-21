@@ -1,0 +1,42 @@
+{
+  "baseline_commit": "d7cc9343ad21c39e53212e9b2b761489f67b6dfe",
+  "map_unchanged": true,
+  "profile_sha256": "9e5bb38a5a3591c4cea6e29067b45602cb5743a2edb69af3c86b85710fbab559",
+  "profile_metadata": {
+    "background_thread": false,
+    "builder_sha256": {
+      "build_callable_map.py": "60ce236faf4edc35c966675d46889c3e80cd0b29cd82a77e5760de7f987bdeff",
+      "build_map.py": "9fda87518a6c6f8863b2fddb8b21a1ee369aced7cb53f190091ddd3846a871c8",
+      "build_tokenizer_map.py": "e37062caff830d2a344ade266302cb31fb7edf55e1b47c616d070e27e7c15486",
+      "tokenizer_dependencies.py": "9d8c38e258ed61f392a88b089fb20b0ffa427804c496e81b88c24034849dc34a"
+    },
+    "candidate_attributes": 57,
+    "collection_errors": [],
+    "complete": true,
+    "elapsed_seconds": 236.92,
+    "instrumentation": "class-qualified direct fields and cached core instance provenance; unchanged dictionary key membership",
+    "opaque_reflection_contexts": [],
+    "outcomes": {
+      "passed": 27060,
+      "skipped": 1
+    },
+    "pytest": "9.2.0",
+    "pytest_exit_code": 0,
+    "python": "3.13.18",
+    "retained_core_instances": 48342,
+    "scope_dependencies": "shared fixture setup and module teardown propagated",
+    "unknown_core_contexts": [],
+    "worker_execution": "baseline process pools inlined with ForkingPickler transport"
+  },
+  "regression_tests": 217,
+  "regression_skips": 0,
+  "simulated_before": 163.788,
+  "simulated_after": 136.239,
+  "simulated_reduction": 27.549,
+  "sample_misses": 0,
+  "new_mutation_cases": 12,
+  "new_observed_runtime_failures": 4,
+  "prior_mutation_cases": 34,
+  "prior_failure_occurrences": 686,
+  "runtime_image_matches_worktree": true
+}

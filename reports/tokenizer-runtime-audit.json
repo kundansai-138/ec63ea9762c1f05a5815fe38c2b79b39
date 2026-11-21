@@ -1,0 +1,54 @@
+{
+  "uid": 65534,
+  "gid": 65534,
+  "home": "/tmp",
+  "root_read_only": true,
+  "tmp_bytes": 67108864,
+  "tmp_empty": true,
+  "network_interfaces": [
+    "lo"
+  ],
+  "cpu_max": "200000 100000",
+  "memory_max": 4294967296,
+  "pids_max": 256,
+  "answers_available": false,
+  "runtime_file_sha256": {
+    "selection_precision.py": "a6d36fdde7c8e037c915db05057e0a6411a34c3e136a9ebd58f212a4b06fc954",
+    "attribute_dependencies.py": "285496d1c8db085560c7c621c028a3e0a699818c7965a8410a2c442189bbabc9",
+    "ast_equal.py": "54bf601507b049d0011ba2578271430fce4746dbf3bc6d139c835b8a1e8552e9",
+    "class_dependencies.py": "210e7a532959c633ac7f57fe4fb463a6bc619af7d9d90bd806bc30bf69d00268",
+    "tokenizer-profile.json.gz": "9e5bb38a5a3591c4cea6e29067b45602cb5743a2edb69af3c86b85710fbab559",
+    "coverage-map.json.gz": "28c88364f9eb689ed4e518956f5a7e117ac7c2c13907124873f69de86e365d6f",
+    "baseline_comparisons.py": "ce8bcea1b547ea46606b4a3d6d6a199cae1a8770e1e7432bd8c881f5f2baf4d0",
+    "dependency_safety.py": "9dcc1b875720cbc34257fa22bc8b526f2e4abc11f96d49b601d8061e6d4e7207",
+    "factory_dependencies.py": "5593abd97cf16969b03735034277ea8658555bd64611bfeb3b9eb1b5753ce5fa",
+    "scheduling.py": "d3db4c46d30fb50308fc9e1bb626fc22c02a491a219979726f1660c3091bb45e",
+    "tokenizer_dependencies.py": "9d8c38e258ed61f392a88b089fb20b0ffa427804c496e81b88c24034849dc34a",
+    "selector.py": "ca28309f7d51ce578c63e7eac4fd48c5ce577c26c2bbbd3bf09f48a7e51c9e65"
+  },
+  "runtime_image_matches_worktree": true,
+  "image": {
+    "Id": "sha256:5e873ec12e22514e7462f38dd7d2306f7bfb3e2304c5ce115748f45d8c4cc252",
+    "Architecture": "amd64",
+    "Os": "linux"
+  },
+  "build": {
+    "exit_code": 0,
+    "wall_seconds": 15.078,
+    "timeout_seconds": 600,
+    "no_cache": true,
+    "verified_host_config": {
+      "Memory": 8589934592,
+      "CpuPeriod": 100000,
+      "CpuQuota": 400000
+    }
+  },
+  "repository": {
+    "working_tree_bytes_including_new_files": 4760238,
+    "retained_git_object_bytes": 14864105,
+    "conservative_sum_bytes": 19624343,
+    "limit_bytes": 20000000,
+    "gitlinks": false,
+    "lfs_pointers": false
+  }
+}

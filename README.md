@@ -6,41 +6,38 @@ worker cost for that selection. It does not execute patched code at decision
 time. Unsupported or uncertain changes fall back to the complete test suite.
 
 The runtime uses only Python's standard library and the committed
-`coverage-map.json.gz`. It reads `/data/tests.json` and `/data/commits/*.patch`,
+`coverage-map.json.gz` and `tokenizer-profile.json.gz`. It reads `/data/tests.json` and `/data/commits/*.patch`,
 writes one compact JSON answer per commit to stdout, and sends diagnostics to
 stderr. It needs no network, mutable source checkout, or package installation.
 
 ## Validated sample result
 
-The integrated implementation retained all 73 known failing-test occurrences
-across 30 samples in three fresh competition-limited Docker runs. Every run was
-valid, with deterministic output and **zero missed commits**.
+The candidate retains all 73 known failing-test occurrences across the 30 samples
+with **zero missed commits**. Selector output is deterministic across three-run
+and five-run Docker measurements under the competition limits.
 
 | Version | Simulated seconds | Three-run Docker median | Missed commits |
 | --- | ---: | ---: | ---: |
-| Before (`205e093`) | 198.146 | 199.9 | 0 |
-| Integrated class dependencies | 163.788 | 165.9 | 0 |
+| Submitted `d7cc934` | 163.788 | 167.1 | 0 |
+| Tokenizer dependencies | 136.239 | 139.5 | 0 |
 
-The class-specific change saves **34.358 simulated seconds (17.34%)** while
-preserving the existing callable, factory, comparison, subprocess and scheduling
-optimizations. The original submitted version `f659c6224811` costs 288.689
-simulated seconds on this same sample batch.
+The tokenizer change saves **27.549 simulated seconds (16.82%)**.
+The five-run Docker median is **139.3 seconds**.
+All **217 regression tests pass**, with no skipped regression tests.
+Twelve additional mutation cases have zero observed omissions; four run the
+full suite. Prior validations are also rechecked: all 686 recorded failing-test
+occurrences across 34 earlier cases remain selected.
 
-Busiest-worker loads total 93.788 seconds; 35 occupied workers add 70 seconds;
-miss penalties are zero. Peak measured RSS was 271.83 MiB, and stdout was
-9,746 bytes. All **184 regression tests passed** in the pinned Docker image.
-Integrated selections were also checked against 34 previously executed mutation
-cases: all 686 recorded failing-test occurrences remain selected. Those cases
-include three full-suite `TriggerProperties` mutations. Other mutation scopes
-vary, so this is evidence rather than proof for every hidden patch.
+These are **local sample measurements**. The last user-provided official result
+for `d7cc934` was 328.4 seconds, including 325.703 simulated seconds and zero
+misses. Its simulated workload differs from the supplied sample batch; the new
+official score requires resubmission and cannot be inferred from this table.
 
-These are **local sample scores, not official leaderboard results**. CPU includes
-a small measurement parent and varies by machine. See the
-[submission audit](reports/SUBMISSION_AUDIT.md),
-[class dependency explanation](reports/CLASS_DEPENDENCY_AUDIT.md),
-[fresh Docker measurements](reports/class-integration-after.json), and
-[integration correctness evidence](reports/class-integration-correctness.json).
-Older three/five-run reports are retained as historical baseline evidence.
+See the [submission audit](reports/SUBMISSION_AUDIT.md),
+[three-run measurements](reports/tokenizer-after-three.json),
+[five-run measurements](reports/tokenizer-after-five.json), and
+[mutation validation](reports/tokenizer-mutation-validation.json).
+Older measurements remain available as historical evidence.
 
 ## Selection
 
@@ -106,6 +103,16 @@ then compares the old and new ASTs:
   class-local aliases, changed keys and non-boolean values retain the fallback.
   The profile is derived only from the unchanged pinned baseline, without
   patch IDs, failure labels or precomputed outcomes for proposed changes.
+- A tokenizer profile follows class configuration fields into plain
+  `TokenizerCore` slots and records readers of cached core instances across test
+  contexts. It supports unchanged literal shapes and ordered dictionary keys.
+  The import-time numeric escape format derivation observes only those keys;
+  changes to values cannot change that derivation. Other collection consumers
+  retain the fallback. Constructor, source, reflection and incomplete-test
+  dependencies remain selected. Unknown/copied cores and reflection escapes
+  retain their entire contexts. The profile is generated from the complete
+  unchanged baseline and stored separately to preserve the existing map and
+  avoid another large map blob in submitted history.
 - An AST-preserving edit still selects tests that read the source file as data.
   Comment-shaped encoding declarations are parsed rather than assumed harmless.
 - Changes to fixtures and other non-Python files select their recorded readers.
@@ -251,6 +258,7 @@ python /app/build_comparison_map.py --source /tmp/sqlglot --source-manifest /inp
 python /app/enrich_map.py --input-map /output/coverage-map.json.gz --output-map /output/coverage-map.json.gz --comparison-profile /output/comparison-map.json.gz
 python /app/build_class_map.py --source /tmp/sqlglot --source-manifest /input/manifest.json --map /output/coverage-map.json.gz --output /output/class-map.json.gz
 python /app/enrich_map.py --input-map /output/coverage-map.json.gz --output-map /output/coverage-map.json.gz --class-profile /output/class-map.json.gz
+python /app/build_tokenizer_map.py --source /tmp/sqlglot --source-manifest /input/manifest.json --map /output/coverage-map.json.gz --output /output/tokenizer-profile.json.gz
 ```
 
 Do not use its development-only `--test` subset option for a final map. Inspect
@@ -264,9 +272,10 @@ Inspect and score the candidate before replacing the committed map:
 
 ```sh
 python -c 'import gzip,json; m=json.load(gzip.open("work/map-results/coverage-map.json.gz","rt")); print(json.dumps(m["metadata"],indent=2)); assert m["metadata"]["pytest_exit_code"] == 0; assert not m["metadata"]["collection_errors"]; assert m["metadata"]["test_subset"] is None'
-python selector.py --map work/map-results/coverage-map.json.gz --data sample > work/candidate.jsonl
+python selector.py --map work/map-results/coverage-map.json.gz --tokenizer-profile work/map-results/tokenizer-profile.json.gz --data sample > work/candidate.jsonl
 python score.py sample sample/answers.json work/candidate.jsonl
 cp work/map-results/coverage-map.json.gz coverage-map.json.gz
+cp work/map-results/tokenizer-profile.json.gz tokenizer-profile.json.gz
 make sample
 ```
 
