@@ -27,14 +27,20 @@ scorer's limits (2 CPUs, 4 GB, no network, read-only disk, user `nobody`):
 | Version | Simulated seconds | Missed commits |
 | --- | ---: | ---: |
 | Baseline dependencies only (`d7cc934`) | 163.788 | 0 |
-| With module scope and candidate runs | 119.139 | 0 |
+| Tokenizer dependencies (`b584e95`) | 136.239 | 0 |
+| With module scope and candidate runs | 114.824 | 0 |
 
 The best possible answer for these 30 commits costs 94.4 simulated seconds.
 
-CPU seconds are charged on top. On the development machine one run used about
-8.4 CPU seconds, but that machine runs sqlglot's tests about 3.4 times slower
-than the recorded durations in `tests.json`, so this number does not transfer.
-These are **local sample scores, not official leaderboard results**.
+CPU seconds are charged on top. An idle run on the development machine used
+about 8.4 CPU seconds: about 3.1 for selection and 4.7 for running candidates.
+CPU time measured while the machine is busy with other work is several times
+higher, so only idle measurements mean anything.
+
+These are **local sample measurements, not official results**. The last
+official practice result supplied by the user, for `d7cc934`, was 328.4 seconds
+(325.703 simulated, zero misses). The practice batch is larger and harder than
+the sample, so a new official score cannot be inferred from this table.
 
 Evidence that running candidates agrees with the labeling method: on 146
 synthetic patches, the 1,205 test verdicts produced by `runner.py` were
@@ -43,8 +49,9 @@ disagreement was a test the runner failed and pytest passed, which costs time
 but cannot cause a miss. There was no case of the runner passing a test that
 pytest failed. This is evidence, not proof, for hidden patches.
 
-All 184 regression tests in `tests/` pass. The reports under `reports/`
-describe the earlier baseline-only versions.
+The regression tests in `tests/` pass. `tests/test_build_tokenizer_map.py`
+needs the `coverage` package, which only the map-building image installs. The
+reports under `reports/` describe the earlier baseline-only versions.
 
 ## Selection
 
@@ -142,6 +149,18 @@ file every test imports, the bound is the complete suite, as before.
 
 Running each test alone matters: in a shared process the first test to need a
 module or a cached value pays for it, and later tests reuse it invisibly.
+
+The same map records which lines each test's own process executed, split into
+lines run while a module was being imported and lines run otherwise. For an
+edit inside a function body the selector adds both sets for the changed
+statements to the shared-process coverage. This covers a function that only
+runs when a dialect module is first imported: in a shared process that happens
+once, inside whichever test loads the dialect first, although every later test
+of that dialect depends on the result. When this evidence is available it
+replaces the older rule that sent every function executed during collection to
+the complete suite. If the only difference is the body of a nested function,
+the nested `def` line itself is not counted, because defining a function does
+not run it.
 
 ### Running the candidates
 

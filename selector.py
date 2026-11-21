@@ -132,6 +132,43 @@ def _ast(source: str) -> ast.Module:
     return tree
 
 
+def _nested_body(left: ast.AST, right: ast.AST, edit: "Edit") -> tuple[int, int] | None:
+    """Lines of a nested function's body, if the change lies entirely inside it.
+
+    Defining a nested function runs its `def` line but not its body. When the
+    only difference between two versions of a function is the body of one
+    function nested inside it, only executions of that body can observe the
+    change. Returns None when the change is not confined that way.
+    """
+    lines = sorted(n for n in edit.changed if left.lineno <= n <= left.end_lineno)
+    points = sorted(n for n in edit.inserted if left.lineno <= n < left.end_lineno)
+    if not lines and not points:
+        return None
+    low = min(lines + [p + 1 for p in points])
+    high = max(lines + points)
+    functions = (ast.FunctionDef, ast.AsyncFunctionDef)
+    old_nodes = [n for n in ast.walk(left) if isinstance(n, functions) and n is not left]
+    new_nodes = [n for n in ast.walk(right) if isinstance(n, functions) and n is not right]
+    if len(old_nodes) != len(new_nodes):
+        return None
+    best = None
+    for index, node in enumerate(old_nodes):
+        if node.body[0].lineno <= low and high <= node.end_lineno:
+            if best is None or node.end_lineno - node.lineno < old_nodes[best].end_lineno - old_nodes[best].lineno:
+                best = index
+    if best is None:
+        return None
+    old_node, new_node = old_nodes[best], new_nodes[best]
+    old_body, new_body = old_node.body, new_node.body
+    try:
+        # With that one body blanked on both sides, nothing else may differ.
+        old_node.body = new_node.body = [ast.Pass()]
+        same = ast_equal(left, right)
+    finally:
+        old_node.body, new_node.body = old_body, new_body
+    return (old_body[0].lineno, old_node.end_lineno) if same else None
+
+
 def _literal_tree(node: ast.AST) -> bool:
     allowed = all(isinstance(n, (ast.Constant, ast.Dict, ast.List, ast.Tuple,
                               ast.Set, ast.Load, ast.UnaryOp, ast.UAdd, ast.USub))
@@ -196,18 +233,22 @@ class SelectionEngine:
         module-level code, or reads the file as data. Without that evidence the
         complete suite is returned.
         """
+        isolation = self._isolation_map()
+        if isolation is None:
+            return self.all_tests
+        importers = isolation.importers(path)
+        if importers is None:
+            return self.all_tests
+        return selected | importers | isolation.always | self.uncertain
+
+    def _isolation_map(self):
         if self._isolation is None and self._isolation_loader is not None:
             try:
                 self._isolation = self._isolation_loader()
-            except Exception as error:  # noqa: BLE001 - fall back to the complete suite
+            except Exception as error:  # noqa: BLE001 - callers fall back to wider selections
                 print(f"isolation map unavailable: {error!r}", file=sys.stderr)
             self._isolation_loader = None
-        if self._isolation is None:
-            return self.all_tests
-        importers = self._isolation.importers(path)
-        if importers is None:
-            return self.all_tests
-        return selected | importers | self._isolation.always | self.uncertain
+        return self._isolation
 
     def _lines(self, file: dict, start: int, end: int) -> set[int]:
         return self._numbers(i for line, ids in file.get("lines", {}).items()
@@ -317,14 +358,32 @@ class SelectionEngine:
                     # AST matching ignores independent documentation hunks.
                     if "lines" not in file:
                         return False
-                    if any(left.body[0].lineno <= n <= left.end_lineno
-                           for n in file.get("collection_lines", [])):
+                    isolation = self._isolation_map()
+                    if isolation is None and any(left.body[0].lineno <= n <= left.end_lineno
+                                                 for n in file.get("collection_lines", [])):
+                        # The function ran while modules were imported and its
+                        # result may live on in any test; without per-process
+                        # evidence the dependency cannot be bounded.
                         return False
                     intervals = function_lines(left, right)
                     if intervals is None:
                         intervals = [(left.body[0].lineno, left.end_lineno)]
                     for start, end in intervals:
                         selected.update(self._lines(file, start, end))
+                    if isolation is not None:
+                        # A shared process imports a module once, during
+                        # whichever test needs it first. Run alone, every test
+                        # that depends on the import executes it, so these are
+                        # all tests whose own process ran the changed
+                        # statements, while importing or later.
+                        nested = _nested_body(left, right, edit)
+                        for start, end in intervals:
+                            if nested is not None:
+                                start, end = max(start, nested[0]), min(end, nested[1])
+                            if start <= end:
+                                selected.update(isolation.line_tests(edit.path, start, end, "import"))
+                                selected.update(isolation.line_tests(edit.path, start, end, "test"))
+                        selected.update(isolation.always)
                 elif isinstance(left, ast.ClassDef):
                     if not ast_equal(header(left), header(right)):
                         return False
